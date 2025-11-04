@@ -22,40 +22,102 @@ export class WarehouseScene extends Phaser.Scene {
     private upgradeLevel: number = 1; // 升级等级
     private upgradeCost: number = 1000; // 升级费用
     
+    // 背包相关属性
+    private backpackItems: InventoryItem[] = [];
+    private backpackSlots: Phaser.GameObjects.Graphics[] = [];
+    private selectedBackpackSlot: number = -1;
+    private fromEvacuation: boolean = false; // 是否从撤离进入
+    
     // 详细信息面板相关属性
     private detailsPanel: Phaser.GameObjects.Rectangle | null = null;
     private detailsTitle: Phaser.GameObjects.Text | null = null;
     private detailsText: Phaser.GameObjects.Text | null = null;
     private useButton: Phaser.GameObjects.Rectangle | null = null;
+    
+    // 操作菜单相关属性
+    private actionMenu: Phaser.GameObjects.Container | null = null;
+    private currentSelectedItem: { item: InventoryItem, isBackpack: boolean, slotIndex: number } | null = null;
 
     constructor() {
         super({ key: 'WarehouseScene' });
     }
 
     init(data: any) {
-        this.playerHealth = data.playerHealth || 100;
-        this.playerMoney = data.playerMoney || 0;
+        // 优先从本地存储加载玩家数据（确保金钱数据持续保留）
+        this.loadPlayerData();
         
-        // 从本地存储加载库存
+        // 如果传入的数据不为空且大于本地存储的值，使用传入的数据（合并而不是覆盖）
+        // 这样可以确保金钱只会增加，不会减少
+        if (data.playerHealth !== undefined && data.playerHealth > 0) {
+            this.playerHealth = Math.max(this.playerHealth, data.playerHealth);
+        }
+        if (data.playerMoney !== undefined) {
+            // 取较大值，确保金钱不会因为重新进入而减少
+            this.playerMoney = Math.max(this.playerMoney, data.playerMoney);
+            // 立即保存，确保金钱数据持久化
+            localStorage.setItem('player_money', this.playerMoney.toString());
+        }
+        
+        this.fromEvacuation = data.fromEvacuation || false;
+        
+        // 从本地存储加载库存（仓库物品会一直保存）
         this.loadInventoryFromStorage();
         
-        // 如果没有库存数据，创建示例数据
-        if (this.inventoryItems.length === 0) {
+        // 如果有背包物品数据（从撤离进入），添加到背包
+        if (data.backpackItems && Array.isArray(data.backpackItems)) {
+            this.backpackItems = data.backpackItems;
+        }
+        
+        // 如果没有库存数据且不是从撤离进入，创建示例数据
+        if (this.inventoryItems.length === 0 && !this.fromEvacuation) {
             this.createSampleInventory();
         }
         
         this.calculateTotalValue();
+        
+        console.log(`仓库场景初始化: 金钱=$${this.playerMoney}, 血量=${this.playerHealth}, 仓库物品=${this.inventoryItems.length}, 背包物品=${this.backpackItems.length}`);
+    }
+    
+    // 加载玩家数据
+    private loadPlayerData() {
+        try {
+            const savedMoney = localStorage.getItem('player_money');
+            const savedHealth = localStorage.getItem('player_health');
+            
+            if (savedMoney) {
+                this.playerMoney = parseInt(savedMoney, 10);
+            }
+            if (savedHealth) {
+                this.playerHealth = parseInt(savedHealth, 10);
+            }
+        } catch (error) {
+            console.warn('无法加载玩家数据:', error);
+        }
     }
 
     create() {
         console.log('仓库场景创建完成');
         
+        // 显示鼠标光标
+        this.input.setDefaultCursor('default');
+        this.input.cursor = 'default';
+        
         this.createBackground();
         this.createInventoryUI();
         this.createItemSlots();
+        this.createBackpackUI(); // 添加背包UI
         this.createActionButtons();
         this.createStatsDisplay();
         this.createControlsInfo();
+        this.createReturnToMenuButton(); // 添加返回主菜单按钮
+        
+        // 如果是从撤离进入，显示欢迎消息
+        if (this.fromEvacuation) {
+            this.showMessage('🎉 撤离成功！请将背包物品转移到仓库');
+        }
+        
+        // 确保数据已保存
+        this.saveInventoryToStorage();
     }
 
     private createBackground() {
@@ -105,21 +167,21 @@ export class WarehouseScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
         
-        // 库存区域背景
+        // 仓库区域背景（右侧）
         const inventoryBg = this.add.graphics();
-        const inventoryWidth = width * 0.88;
-        const inventoryHeight = height * 0.55;
-        const inventoryX = (width - inventoryWidth) / 2;
-        const inventoryY = height * 0.12;
+        const inventoryWidth = width * 0.45; // 占屏幕45%宽度
+        const inventoryHeight = height * 0.65;
+        const inventoryX = width * 0.52; // 右侧位置
+        const inventoryY = height * 0.15;
         
         inventoryBg.fillStyle(0x34495e, 0.9);
         inventoryBg.fillRoundedRect(inventoryX, inventoryY, inventoryWidth, inventoryHeight, 12);
         inventoryBg.lineStyle(3, 0x3498db);
         inventoryBg.strokeRoundedRect(inventoryX, inventoryY, inventoryWidth, inventoryHeight, 12);
         
-        // 库存标题
+        // 仓库标题
         this.inventoryText = this.add.text(
-            width / 2,
+            inventoryX + inventoryWidth / 2,
             inventoryY + 25,
             '📦 物品仓库',
             { 
@@ -139,13 +201,13 @@ export class WarehouseScene extends Phaser.Scene {
         // 从本地存储加载容量和升级信息
         this.loadWarehouseData();
         
-        const slotsPerRow = 6;
-        const slotSize = 85;
-        const slotSpacing = 12;
+        const slotsPerRow = 4; // 改为4列，适应更窄的布局
+        const slotSize = 80;
+        const slotSpacing = 10;
         
-        const inventoryWidth = width * 0.88;
-        const inventoryX = (width - inventoryWidth) / 2;
-        const inventoryY = height * 0.12;
+        const inventoryWidth = width * 0.45;
+        const inventoryX = width * 0.52;
+        const inventoryY = height * 0.15;
         
         const totalSlotWidth = slotsPerRow * slotSize + (slotsPerRow - 1) * slotSpacing;
         const startX = inventoryX + (inventoryWidth - totalSlotWidth) / 2;
@@ -185,14 +247,23 @@ export class WarehouseScene extends Phaser.Scene {
                 slot.strokeRoundedRect(x, y, slotSize, slotSize, 8);
             });
             
-            slot.on('pointerdown', () => {
-                this.selectSlot(i);
-            });
-            
-            // 如果槽位有物品，显示物品
+            // 先创建物品（如果有），再设置槽位交互，确保物品容器在槽位之上
             if (i < this.inventoryItems.length) {
                 this.createItemInSlot(i, x + slotSize / 2, y + slotSize / 2);
             }
+            
+            // 设置槽位点击事件（空槽位时）
+            slot.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+                // 检查点击是否在物品上（物品容器会在槽位之上）
+                if (i < this.inventoryItems.length) {
+                    // 如果有物品，让物品容器处理点击
+                    // 这里不直接处理，因为物品容器有自己的点击事件
+                    return;
+                } else {
+                    // 空槽位，选择槽位
+                    this.selectSlot(i);
+                }
+            });
         }
     }
 
@@ -245,44 +316,32 @@ export class WarehouseScene extends Phaser.Scene {
         itemContainer.add([itemIcon, itemText, quantityText, valueText]);
         itemContainer.setInteractive(new Phaser.Geom.Circle(0, 0, 35), Phaser.Geom.Circle.Contains);
         
-        let tooltip: Phaser.GameObjects.Text | null = null;
-        
+        // 悬停效果
         itemContainer.on('pointerover', () => {
-            // 显示悬停提示
-            tooltip = this.add.text(
-                x + 50, 
-                y - 20, 
-                `📦 ${item.name}\n🏷️ 类型: ${this.getItemTypeName(item.type)}\n💰 价值: $${item.value}\n🔢 数量: ${item.quantity}`,
-                { 
-                    font: 'bold 14px Arial', 
-                    color: '#ecf0f1',
-                    stroke: '#2c3e50',
-                    strokeThickness: 2,
-                    backgroundColor: '#34495e',
-                    padding: { x: 12, y: 8 }
-                }
-            );
-            tooltip.setOrigin(0, 0.5);
-            
-            // 显示详细信息面板
+            // 显示详细信息面板（在底部）
             this.showItemDetails(item);
+            // 添加高亮效果
+            itemContainer.setScale(1.1);
         });
         
         itemContainer.on('pointerout', () => {
-            // 隐藏悬停提示
-            if (tooltip) {
-                tooltip.destroy();
-                tooltip = null;
+            // 恢复原大小
+            itemContainer.setScale(1);
+            // 如果没有选中菜单，隐藏详细信息
+            if (!this.actionMenu) {
+                this.hideItemDetails();
             }
-            
-            // 隐藏详细信息面板
-            this.hideItemDetails();
         });
         
-        // 点击显示详细信息
-        itemContainer.on('pointerdown', () => {
-            this.selectSlot(slotIndex);
+        // 点击显示操作菜单（确保在所有情况下都能触发）
+        itemContainer.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            // 阻止事件冒泡，确保点击物品时触发物品的菜单
+            pointer.event?.stopPropagation?.();
+            this.showItemActionMenu(item, false, slotIndex);
         });
+        
+        // 设置更高的深度，确保物品容器在槽位之上
+        itemContainer.setDepth(100);
     }
     
     private loadInventoryFromStorage() {
@@ -371,19 +430,18 @@ export class WarehouseScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
         const centerX = width / 2;
-        const buttonY = height * 0.75;
-        const buttonWidth = 160;
-        const buttonHeight = 45;
+        const buttonY = height * 0.92;
+        const buttonWidth = 150;
+        const buttonHeight = 40;
         const buttonMargin = 15;
         
         const totalButtonsWidth = 4 * buttonWidth + 3 * buttonMargin;
         const startX = (width - totalButtonsWidth) / 2;
         
         const buttons = [
-            { text: '💰 出售物品', x: startX + buttonWidth/2, action: () => this.sellSelectedItem(), color: 0xe74c3c },
-            { text: '📦 整理物品', x: startX + buttonWidth + buttonMargin + buttonWidth/2, action: () => this.organizeItems(), color: 0x3498db },
-            { text: `🔼 升级(${this.upgradeCost}$)`, x: startX + 2*(buttonWidth + buttonMargin) + buttonWidth/2, action: () => this.upgradeWarehouse(), color: 0xf39c12 },
-            { text: '⬅️ 返回菜单', x: startX + 3*(buttonWidth + buttonMargin) + buttonWidth/2, action: () => this.returnToMenu(), color: 0x95a5a6 }
+            { text: '📦 整理物品', x: startX + buttonWidth/2, action: () => this.organizeItems(), color: 0x3498db },
+            { text: `🔼 升级(${this.upgradeCost}$)`, x: startX + buttonWidth + buttonMargin + buttonWidth/2, action: () => this.upgradeWarehouse(), color: 0xf39c12 },
+            { text: '🔄 刷新界面', x: startX + 2*(buttonWidth + buttonMargin) + buttonWidth/2, action: () => this.refreshScene(), color: 0x16a085 }
         ];
         
         buttons.forEach(button => {
@@ -420,9 +478,9 @@ export class WarehouseScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
         
-        // 统计信息区域
+        // 统计信息区域（屏幕顶部）
         const statsX = width * 0.06;
-        const statsY = height * 0.82;
+        const statsY = height * 0.05;
         const statsWidth = width * 0.88;
         
         // 背景面板
@@ -439,9 +497,10 @@ export class WarehouseScene extends Phaser.Scene {
         const stats = [
             { label: '❤️ 生命值', value: `${displayHealth}`, color: '#e74c3c' },
             { label: '💰 金钱', value: `$${this.playerMoney}`, color: '#f1c40f' },
-            { label: '📦 物品数', value: `${this.inventoryItems.length}/${this.maxCapacity}`, color: '#3498db' },
+            { label: '📦 仓库', value: `${this.inventoryItems.length}/${this.maxCapacity}`, color: '#3498db' },
+            { label: '🎒 背包', value: `${this.backpackItems.length}/12`, color: '#9b59b6' },
             { label: '💵 总价值', value: `$${this.totalValue}`, color: '#2ecc71' },
-            { label: '🏪 仓库等级', value: `Lv.${this.upgradeLevel}`, color: '#9b59b6' }
+            { label: '🏪 等级', value: `Lv.${this.upgradeLevel}`, color: '#e67e22' }
         ];
         
         const itemWidth = statsWidth / stats.length;
@@ -497,13 +556,19 @@ export class WarehouseScene extends Phaser.Scene {
             this.maxCapacity += 6; // 每次升级增加6个槽位
             this.upgradeCost = 1000 * Math.pow(2, this.upgradeLevel - 1);
             
+            // 保存所有数据（确保持久化）
             this.saveWarehouseData();
+            this.saveInventoryToStorage();
+            this.savePlayerData();
+            
             this.showMessage(`仓库升级成功！当前等级: ${this.upgradeLevel}，容量: ${this.maxCapacity}`);
             
             // 刷新界面
             this.scene.restart({ 
                 playerHealth: this.playerHealth, 
-                playerMoney: this.playerMoney 
+                playerMoney: this.playerMoney,
+                backpackItems: this.backpackItems,
+                fromEvacuation: this.fromEvacuation
             });
         } else {
             this.showMessage(`金钱不足！需要 $${this.upgradeCost}`);
@@ -514,18 +579,23 @@ export class WarehouseScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
         
-        // 操作说明 - 使用动态位置
+        // 操作说明 - 屏幕底部
         const controlsText = this.add.text(
-            width * 0.1, // 左侧位置
-            height * 0.15 + 20, // 与库存区域对齐
-            '操作说明: 点击物品槽选择物品 | 数字键1-12快速选择 | ESC返回游戏',
-            { font: '12px Arial', color: '#bdc3c7' }
+            width / 2,
+            height * 0.96,
+            '💡 提示: 点击物品查看详细信息并选择操作 | 鼠标悬停查看物品信息',
+            { 
+                font: '12px Arial', 
+                color: '#bdc3c7',
+                stroke: '#2c3e50',
+                strokeThickness: 1
+            }
         );
-        controlsText.setOrigin(0, 0); // 左对齐
+        controlsText.setOrigin(0.5, 1); // 居中，底部对齐
         
         // 键盘控制
         this.input.keyboard!.on('keydown-ESC', () => {
-            this.returnToGame();
+            this.returnToMenu();
         });
         
         // 数字键快速选择
@@ -536,6 +606,50 @@ export class WarehouseScene extends Phaser.Scene {
                 }
             });
         }
+    }
+    
+    // 创建返回主菜单按钮（底部中央）
+    private createReturnToMenuButton() {
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        
+        const buttonX = width / 2;
+        const buttonY = height * 0.98;
+        const buttonWidth = 200;
+        const buttonHeight = 45;
+        
+        // 按钮背景
+        const bg = this.add.rectangle(buttonX, buttonY, buttonWidth, buttonHeight, 0xe74c3c, 0.9);
+        bg.setStrokeStyle(3, 0xe74c3c);
+        bg.setInteractive({ useHandCursor: true });
+        bg.setDepth(1000);
+        
+        // 按钮文本
+        const buttonText = this.add.text(buttonX, buttonY, '🏠 返回主菜单', {
+            font: 'bold 18px Arial',
+            color: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 3
+        });
+        buttonText.setOrigin(0.5);
+        buttonText.setDepth(1001);
+        
+        // 悬停效果
+        bg.on('pointerover', () => {
+            bg.setFillStyle(0xe74c3c, 1);
+            bg.setScale(1.05);
+            buttonText.setScale(1.05);
+        });
+        
+        bg.on('pointerout', () => {
+            bg.setFillStyle(0xe74c3c, 0.9);
+            bg.setScale(1);
+            buttonText.setScale(1);
+        });
+        
+        bg.on('pointerdown', () => {
+            this.returnToMenu();
+        });
     }
 
     private selectSlot(slotIndex: number) {
@@ -623,15 +737,18 @@ export class WarehouseScene extends Phaser.Scene {
             return b.value - a.value;
         });
         
-        // 保存整理后的库存
+        // 保存整理后的库存（确保持久化）
         this.saveInventoryToStorage();
+        this.savePlayerData();
         
         this.showMessage('库存已按类型和价值排序整理完成');
         
         // 刷新界面
         this.scene.restart({ 
             playerHealth: this.playerHealth, 
-            playerMoney: this.playerMoney 
+            playerMoney: this.playerMoney,
+            backpackItems: this.backpackItems,
+            fromEvacuation: this.fromEvacuation
         });
     }
 
@@ -669,8 +786,9 @@ export class WarehouseScene extends Phaser.Scene {
     
     private returnToMenu() {
         try {
-            // 保存库存数据
+            // 保存所有数据（库存、金钱、血量等）
             this.saveInventoryToStorage();
+            this.savePlayerData();
             
             // 停止当前场景
             this.scene.stop();
@@ -678,9 +796,24 @@ export class WarehouseScene extends Phaser.Scene {
             // 启动主菜单
             this.scene.start('MenuScene');
             
-            console.log('返回主菜单');
+            console.log('返回主菜单，数据已保存');
         } catch (error) {
             console.error('返回主菜单时出错:', error);
+            // 即使出错也尝试返回菜单
+            this.scene.stop();
+            this.scene.start('MenuScene');
+        }
+    }
+    
+    // 保存玩家数据（金钱、血量等）
+    private savePlayerData() {
+        try {
+            // 保存金钱（优先保存，确保不会丢失）
+            localStorage.setItem('player_money', this.playerMoney.toString());
+            localStorage.setItem('player_health', this.playerHealth.toString());
+            console.log(`玩家数据已保存: 金钱=$${this.playerMoney}, 血量=${this.playerHealth}`);
+        } catch (error) {
+            console.warn('无法保存玩家数据:', error);
         }
     }
 
@@ -708,53 +841,308 @@ export class WarehouseScene extends Phaser.Scene {
         }
     }
     
+    // 显示物品操作菜单
+    private showItemActionMenu(item: InventoryItem, isBackpack: boolean, slotIndex: number) {
+        // 隐藏之前的菜单
+        this.hideActionMenu();
+        
+        // 保存当前选中的物品信息
+        this.currentSelectedItem = { item, isBackpack, slotIndex };
+        
+        // 显示物品详细信息
+        this.showItemDetails(item);
+        
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        
+        // 计算菜单位置（在物品右侧或下方）
+        const menuX = isBackpack ? width * 0.25 : width * 0.75;
+        const menuY = height * 0.4;
+        
+        // 创建菜单容器
+        this.actionMenu = this.add.container(menuX, menuY);
+        
+        // 菜单背景（降低透明度，更清晰）
+        const menuBg = this.add.graphics();
+        menuBg.fillStyle(0x2c3e50, 1.0); // 完全不透明
+        menuBg.fillRoundedRect(-140, -100, 280, 200, 10);
+        menuBg.lineStyle(4, 0x3498db, 1.0); // 更粗的边框，完全不透明
+        menuBg.strokeRoundedRect(-140, -100, 280, 200, 10);
+        
+        // 菜单标题
+        const menuTitle = this.add.text(0, -80, '物品操作', {
+            font: 'bold 20px Arial',
+            color: '#f1c40f',
+            stroke: '#2c3e50',
+            strokeThickness: 2
+        });
+        menuTitle.setOrigin(0.5);
+        
+        // 操作按钮
+        const buttonWidth = 200;
+        const buttonHeight = 35;
+        const buttonSpacing = 10;
+        let buttonY = -40;
+        
+        // 如果是从背包，显示"移到仓库"按钮
+        if (isBackpack) {
+            const moveButton = this.createActionButton(0, buttonY, buttonWidth, buttonHeight, '➡️ 移到仓库', 0x2ecc71, () => {
+                this.moveItemToWarehouse();
+            });
+            this.actionMenu.add(moveButton);
+            buttonY += buttonHeight + buttonSpacing;
+        } else {
+            // 如果是从仓库，显示"移到背包"按钮
+            const moveButton = this.createActionButton(0, buttonY, buttonWidth, buttonHeight, '⬅️ 移到背包', 0x9b59b6, () => {
+                this.moveItemToBackpack();
+            });
+            this.actionMenu.add(moveButton);
+            buttonY += buttonHeight + buttonSpacing;
+        }
+        
+        // 出售按钮
+        const sellButton = this.createActionButton(0, buttonY, buttonWidth, buttonHeight, '💰 出售物品', 0xe74c3c, () => {
+            this.sellItem();
+        });
+        this.actionMenu.add(sellButton);
+        buttonY += buttonHeight + buttonSpacing;
+        
+        // 如果物品可使用，显示使用按钮
+        if (item.type === 'MEDICAL' || item.type === 'FOOD') {
+            const useButton = this.createActionButton(0, buttonY, buttonWidth, buttonHeight, '💊 使用物品', 0x27ae60, () => {
+                this.useItem(item);
+            });
+            this.actionMenu.add(useButton);
+        }
+        
+        // 关闭按钮
+        const closeButton = this.createActionButton(0, 80, 200, 30, '✖️ 关闭', 0x95a5a6, () => {
+            this.hideActionMenu();
+        });
+        this.actionMenu.add(closeButton);
+        
+        // 将所有元素添加到容器
+        this.actionMenu.add([menuBg, menuTitle]);
+        this.actionMenu.setDepth(2000);
+        
+        // 点击外部区域关闭菜单
+        this.input.once('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            if (!this.actionMenu) return;
+            const bounds = new Phaser.Geom.Rectangle(
+                menuX - 140,
+                menuY - 100,
+                280,
+                200
+            );
+            if (!bounds.contains(pointer.x, pointer.y)) {
+                this.hideActionMenu();
+            }
+        });
+    }
+    
+    // 创建操作按钮
+    private createActionButton(x: number, y: number, width: number, height: number, text: string, color: number, callback: () => void): Phaser.GameObjects.Container {
+        const container = this.add.container(x, y);
+        
+        // 按钮背景（降低透明度，更清晰）
+        const bg = this.add.rectangle(0, 0, width, height, color, 1.0); // 完全不透明
+        bg.setStrokeStyle(3, color, 1.0); // 更粗的边框，完全不透明
+        bg.setInteractive({ useHandCursor: true });
+        
+        // 按钮文本（更明显的文字）
+        const buttonText = this.add.text(0, 0, text, {
+            font: 'bold 18px Arial', // 更大的字体
+            color: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 3 // 更粗的描边
+        });
+        buttonText.setOrigin(0.5);
+        
+        // 悬停效果
+        bg.on('pointerover', () => {
+            bg.setFillStyle(color, 1.0);
+            bg.setScale(1.08); // 更大的缩放效果
+            buttonText.setScale(1.08);
+        });
+        
+        bg.on('pointerout', () => {
+            bg.setFillStyle(color, 1.0);
+            bg.setScale(1);
+            buttonText.setScale(1);
+        });
+        
+        bg.on('pointerdown', callback);
+        
+        container.add([bg, buttonText]);
+        return container;
+    }
+    
+    // 隐藏操作菜单
+    private hideActionMenu() {
+        if (this.actionMenu) {
+            this.actionMenu.destroy();
+            this.actionMenu = null;
+        }
+        this.currentSelectedItem = null;
+        this.hideItemDetails();
+    }
+    
+    // 移动物品到仓库
+    private moveItemToWarehouse() {
+        if (!this.currentSelectedItem || !this.currentSelectedItem.isBackpack) {
+            this.showMessage('请选择背包物品');
+            return;
+        }
+        
+        const { item, slotIndex } = this.currentSelectedItem;
+        
+        if (this.inventoryItems.length >= this.maxCapacity) {
+            this.showMessage(`仓库已满！当前容量: ${this.maxCapacity}`);
+            this.hideActionMenu();
+            return;
+        }
+        
+        // 添加到仓库
+        this.inventoryItems.push({ ...item });
+        
+        // 从背包移除
+        this.backpackItems.splice(slotIndex, 1);
+        
+        // 保存数据（确保持久化）
+        this.saveInventoryToStorage();
+        this.savePlayerData();
+        this.calculateTotalValue();
+        
+        this.showMessage(`成功将 ${item.name} x${item.quantity} 移到仓库`);
+        this.hideActionMenu();
+        
+        // 刷新界面
+        this.scene.restart({
+            playerHealth: this.playerHealth,
+            playerMoney: this.playerMoney,
+            backpackItems: this.backpackItems,
+            fromEvacuation: this.fromEvacuation
+        });
+    }
+    
+    // 移动物品到背包
+    private moveItemToBackpack() {
+        if (!this.currentSelectedItem || this.currentSelectedItem.isBackpack) {
+            this.showMessage('请选择仓库物品');
+            return;
+        }
+        
+        const { item, slotIndex } = this.currentSelectedItem;
+        
+        if (this.backpackItems.length >= 12) {
+            this.showMessage('背包已满！最多12个物品');
+            this.hideActionMenu();
+            return;
+        }
+        
+        // 添加到背包
+        this.backpackItems.push({ ...item });
+        
+        // 从仓库移除
+        this.inventoryItems.splice(slotIndex, 1);
+        
+        // 保存数据（确保持久化）
+        this.saveInventoryToStorage();
+        this.savePlayerData();
+        this.calculateTotalValue();
+        
+        this.showMessage(`成功将 ${item.name} x${item.quantity} 移到背包`);
+        this.hideActionMenu();
+        
+        // 刷新界面
+        this.scene.restart({
+            playerHealth: this.playerHealth,
+            playerMoney: this.playerMoney,
+            backpackItems: this.backpackItems,
+            fromEvacuation: this.fromEvacuation
+        });
+    }
+    
+    // 出售物品
+    private sellItem() {
+        if (!this.currentSelectedItem) {
+            this.showMessage('请选择物品');
+            return;
+        }
+        
+        const { item, isBackpack, slotIndex } = this.currentSelectedItem;
+        const sellValue = item.value * item.quantity;
+        
+        // 增加玩家金钱
+        this.playerMoney += sellValue;
+        
+        // 从对应位置移除物品
+        if (isBackpack) {
+            this.backpackItems.splice(slotIndex, 1);
+        } else {
+            this.inventoryItems.splice(slotIndex, 1);
+        }
+        
+        // 保存数据（确保持久化，出售后物品会消失）
+        // 优先保存金钱数据，确保金钱不会丢失
+        this.savePlayerData();
+        this.saveInventoryToStorage();
+        this.calculateTotalValue();
+        
+        // 显示出售信息
+        this.showMessage(`成功出售 ${item.name} x${item.quantity}，获得 $${sellValue} | 当前金钱: $${this.playerMoney}`);
+        this.hideActionMenu();
+        
+        // 刷新界面
+        this.scene.restart({
+            playerHealth: this.playerHealth,
+            playerMoney: this.playerMoney,
+            backpackItems: this.backpackItems,
+            fromEvacuation: this.fromEvacuation
+        });
+    }
+    
     private showItemDetails(item: InventoryItem) {
         // 隐藏之前的详细信息面板
         this.hideItemDetails();
         
-        // 创建详细信息面板背景
-        this.detailsPanel = this.add.rectangle(650, 200, 280, 200, 0x2c3e50);
-        this.detailsPanel.setStrokeStyle(2, 0xecf0f1);
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        
+        // 详细信息面板位置（屏幕下方中央）
+        const panelX = width / 2;
+        const panelY = height * 0.82;
+        
+        // 创建详细信息面板背景（降低透明度，更清晰）
+        this.detailsPanel = this.add.rectangle(panelX, panelY, 400, 120, 0x2c3e50, 1.0); // 完全不透明
+        this.detailsPanel.setStrokeStyle(3, 0xecf0f1, 1.0); // 更粗的边框，完全不透明
+        this.detailsPanel.setDepth(1500);
         
         // 物品标题
-        this.detailsTitle = this.add.text(650, 120, '物品详细信息', 
-            { font: '18px Arial', color: '#f1c40f', stroke: '#2c3e50', strokeThickness: 1 });
+        this.detailsTitle = this.add.text(panelX, panelY - 40, item.name, {
+            font: 'bold 20px Arial',
+            color: '#f1c40f',
+            stroke: '#2c3e50',
+            strokeThickness: 2
+        });
         this.detailsTitle.setOrigin(0.5);
+        this.detailsTitle.setDepth(1501);
         
         // 物品详细信息
         const detailsText = [
-            `名称: ${item.name}`,
             `类型: ${this.getItemTypeName(item.type)}`,
-            `价值: $${item.value}`,
-            `数量: ${item.quantity}`,
-            `描述: ${item.description}`,
-            `ID: ${item.id}`
-        ].join('\n');
+            `价值: $${item.value} × ${item.quantity} = $${item.value * item.quantity}`,
+            `描述: ${item.description}`
+        ].join('  |  ');
         
-        this.detailsText = this.add.text(520, 150, detailsText, 
-            { font: '14px Arial', color: '#ecf0f1', wordWrap: { width: 250 } });
-        
-        // 添加使用按钮（如果物品可使用）
-        if (item.type === 'MEDICAL' || item.type === 'FOOD') {
-            this.useButton = this.add.rectangle(650, 280, 120, 30, 0x27ae60);
-            this.useButton.setInteractive();
-            
-            const useText = this.add.text(650, 280, '使用物品', 
-                { font: '14px Arial', color: '#ffffff' });
-            useText.setOrigin(0.5);
-            
-            this.useButton.on('pointerdown', () => {
-                this.useItem(item);
-            });
-            
-            this.useButton.on('pointerover', () => {
-                if (this.useButton) this.useButton.setFillStyle(0x2ecc71);
-            });
-            
-            this.useButton.on('pointerout', () => {
-                if (this.useButton) this.useButton.setFillStyle(0x27ae60);
-            });
-        }
+        this.detailsText = this.add.text(panelX, panelY + 10, detailsText, {
+            font: '14px Arial',
+            color: '#ecf0f1',
+            stroke: '#2c3e50',
+            strokeThickness: 1
+        });
+        this.detailsText.setOrigin(0.5);
+        this.detailsText.setDepth(1501);
     }
     
     private hideItemDetails() {
@@ -829,6 +1217,221 @@ export class WarehouseScene extends Phaser.Scene {
         // 3秒后自动消失
         this.time.delayedCall(3000, () => {
             messageText.destroy();
+        });
+    }
+    
+    // 创建背包UI
+    private createBackpackUI() {
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        
+        // 背包区域背景（左侧）
+        const backpackBg = this.add.graphics();
+        const backpackWidth = width * 0.45; // 占屏幕45%宽度
+        const backpackHeight = height * 0.65;
+        const backpackX = width * 0.03; // 左侧位置
+        const backpackY = height * 0.15;
+        
+        backpackBg.fillStyle(0x34495e, 0.9);
+        backpackBg.fillRoundedRect(backpackX, backpackY, backpackWidth, backpackHeight, 12);
+        backpackBg.lineStyle(3, 0x9b59b6);
+        backpackBg.strokeRoundedRect(backpackX, backpackY, backpackWidth, backpackHeight, 12);
+        
+        // 背包标题
+        const backpackTitle = this.add.text(
+            backpackX + backpackWidth / 2,
+            backpackY + 25,
+            '🎒 背包物品',
+            { 
+                font: 'bold 28px Arial', 
+                color: '#ecf0f1',
+                stroke: '#2c3e50',
+                strokeThickness: 3
+            }
+        );
+        backpackTitle.setOrigin(0.5);
+        
+        // 创建背包物品槽
+        const slotsPerRow = 4; // 改为4列，与仓库保持一致
+        const slotSize = 80;
+        const slotSpacing = 10;
+        
+        const totalSlotWidth = slotsPerRow * slotSize + (slotsPerRow - 1) * slotSpacing;
+        const startX = backpackX + (backpackWidth - totalSlotWidth) / 2;
+        const startY = backpackY + 70;
+        
+        // 背包最多显示12个物品
+        const maxBackpackSlots = 12;
+        for (let i = 0; i < maxBackpackSlots; i++) {
+            const row = Math.floor(i / slotsPerRow);
+            const col = i % slotsPerRow;
+            
+            const x = startX + col * (slotSize + slotSpacing);
+            const y = startY + row * (slotSize + slotSpacing);
+            
+            // 创建背包物品槽
+            const slot = this.add.graphics();
+            slot.fillStyle(0x2c3e50, 0.8);
+            slot.fillRoundedRect(x, y, slotSize, slotSize, 6);
+            slot.lineStyle(2, 0x9b59b6, 0.6);
+            slot.strokeRoundedRect(x, y, slotSize, slotSize, 6);
+            slot.setInteractive(new Phaser.Geom.Rectangle(x, y, slotSize, slotSize), Phaser.Geom.Rectangle.Contains);
+            
+            this.backpackSlots.push(slot);
+            
+            // 槽位交互效果
+            slot.on('pointerover', () => {
+                slot.clear();
+                slot.fillStyle(0x2c3e50, 0.8);
+                slot.fillRoundedRect(x, y, slotSize, slotSize, 6);
+                slot.lineStyle(3, 0xf39c12);
+                slot.strokeRoundedRect(x, y, slotSize, slotSize, 6);
+            });
+            
+            slot.on('pointerout', () => {
+                slot.clear();
+                slot.fillStyle(0x2c3e50, 0.8);
+                slot.fillRoundedRect(x, y, slotSize, slotSize, 6);
+                slot.lineStyle(2, this.selectedBackpackSlot === i ? 0xf1c40f : 0x9b59b6, 0.6);
+                slot.strokeRoundedRect(x, y, slotSize, slotSize, 6);
+            });
+            
+            // 先创建物品（如果有），再设置槽位交互，确保物品容器在槽位之上
+            if (i < this.backpackItems.length) {
+                this.createBackpackItemInSlot(i, x + slotSize / 2, y + slotSize / 2);
+            }
+            
+            // 设置槽位点击事件（空槽位时）
+            slot.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+                // 检查点击是否在物品上（物品容器会在槽位之上）
+                if (i < this.backpackItems.length) {
+                    // 如果有物品，让物品容器处理点击
+                    // 这里不直接处理，因为物品容器有自己的点击事件
+                    return;
+                } else {
+                    // 空槽位，选择槽位
+                    this.selectBackpackSlot(i);
+                }
+            });
+        }
+    }
+    
+    // 在背包槽位中创建物品
+    private createBackpackItemInSlot(slotIndex: number, x: number, y: number) {
+        if (slotIndex >= this.backpackItems.length) return;
+        
+        const item = this.backpackItems[slotIndex];
+        
+        // 创建物品容器
+        const itemContainer = this.add.container(x, y);
+        
+        // 创建物品图标
+        const itemIcon = this.add.graphics();
+        itemIcon.fillStyle(this.getItemColor(item.type));
+        itemIcon.fillCircle(0, 0, 25);
+        itemIcon.lineStyle(2, 0xecf0f1);
+        itemIcon.strokeCircle(0, 0, 25);
+        
+        // 物品数量
+        const quantityText = this.add.text(0, 0, `${item.quantity}`, 
+            { 
+                font: 'bold 14px Arial', 
+                color: '#f39c12',
+                stroke: '#2c3e50',
+                strokeThickness: 2
+            });
+        quantityText.setOrigin(0.5);
+        
+        // 将所有元素添加到容器中
+        itemContainer.add([itemIcon, quantityText]);
+        itemContainer.setInteractive(new Phaser.Geom.Circle(0, 0, 35), Phaser.Geom.Circle.Contains);
+        
+        // 悬停效果
+        itemContainer.on('pointerover', () => {
+            this.showItemDetails(item);
+            itemContainer.setScale(1.1);
+        });
+        
+        itemContainer.on('pointerout', () => {
+            itemContainer.setScale(1);
+            if (!this.actionMenu) {
+                this.hideItemDetails();
+            }
+        });
+        
+        itemContainer.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            // 阻止事件冒泡，确保点击物品时触发物品的菜单
+            pointer.event?.stopPropagation?.();
+            this.showItemActionMenu(item, true, slotIndex);
+        });
+        
+        // 设置更高的深度，确保物品容器在槽位之上
+        itemContainer.setDepth(100);
+    }
+    
+    // 选择背包槽位
+    private selectBackpackSlot(slotIndex: number) {
+        // 取消之前的选择
+        if (this.selectedBackpackSlot >= 0 && this.selectedBackpackSlot < this.backpackSlots.length) {
+            const prevSlot = this.backpackSlots[this.selectedBackpackSlot];
+            const slotSize = 70;
+            const slotsPerRow = 6;
+            const slotSpacing = 10;
+            const backpackWidth = this.cameras.main.width * 0.88;
+            const backpackX = (this.cameras.main.width - backpackWidth) / 2;
+            const totalSlotWidth = slotsPerRow * slotSize + (slotsPerRow - 1) * slotSpacing;
+            const startX = backpackX + (backpackWidth - totalSlotWidth) / 2;
+            const startY = this.cameras.main.height * 0.68 + 55;
+            
+            const row = Math.floor(this.selectedBackpackSlot / slotsPerRow);
+            const col = this.selectedBackpackSlot % slotsPerRow;
+            const x = startX + col * (slotSize + slotSpacing);
+            const y = startY + row * (slotSize + slotSpacing);
+            
+            prevSlot.clear();
+            prevSlot.fillStyle(0x2c3e50, 0.8);
+            prevSlot.fillRoundedRect(x, y, slotSize, slotSize, 6);
+            prevSlot.lineStyle(2, 0x9b59b6, 0.6);
+            prevSlot.strokeRoundedRect(x, y, slotSize, slotSize, 6);
+        }
+        
+        // 选择新槽位
+        this.selectedBackpackSlot = slotIndex;
+        
+        // 高亮选中的槽位
+        if (slotIndex < this.backpackSlots.length) {
+            const slot = this.backpackSlots[slotIndex];
+            const slotSize = 70;
+            const slotsPerRow = 6;
+            const slotSpacing = 10;
+            const backpackWidth = this.cameras.main.width * 0.88;
+            const backpackX = (this.cameras.main.width - backpackWidth) / 2;
+            const totalSlotWidth = slotsPerRow * slotSize + (slotsPerRow - 1) * slotSpacing;
+            const startX = backpackX + (backpackWidth - totalSlotWidth) / 2;
+            const startY = this.cameras.main.height * 0.68 + 55;
+            
+            const row = Math.floor(slotIndex / slotsPerRow);
+            const col = slotIndex % slotsPerRow;
+            const x = startX + col * (slotSize + slotSpacing);
+            const y = startY + row * (slotSize + slotSpacing);
+            
+            slot.clear();
+            slot.fillStyle(0x2c3e50, 0.8);
+            slot.fillRoundedRect(x, y, slotSize, slotSize, 6);
+            slot.lineStyle(4, 0xf1c40f);
+            slot.strokeRoundedRect(x, y, slotSize, slotSize, 6);
+        }
+        
+        console.log(`选中背包槽位 ${slotIndex + 1}`);
+    }
+    
+    // 刷新场景
+    private refreshScene() {
+        this.scene.restart({
+            playerHealth: this.playerHealth,
+            playerMoney: this.playerMoney,
+            backpackItems: this.backpackItems,
+            fromEvacuation: this.fromEvacuation
         });
     }
     

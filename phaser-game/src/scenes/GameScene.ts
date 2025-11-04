@@ -150,6 +150,7 @@ interface Enemy {
     eyeGraphic?: Phaser.GameObjects.Graphics | null;
     healthBarBg?: Phaser.GameObjects.Graphics; // 血量条背景
     healthBar?: Phaser.GameObjects.Graphics; // 血量条
+    typeLabel?: Phaser.GameObjects.Text; // 类型标签
     body: Phaser.Physics.Arcade.Sprite;
     state: 'patrol' | 'chase' | 'attack';
     speed: number;
@@ -158,6 +159,9 @@ interface Enemy {
     patrolPath?: {x: number, y: number}[]; // 巡逻路径
     isHit?: boolean; // 敌人是否被击中
     hitTimer?: number; // 击中效果计时器
+    stateVisualTween?: Phaser.Tweens.Tween | null; // 状态视觉动画
+    lastAttack?: number; // 上次攻击时间
+    patrolIndex?: number; // 巡逻路径索引
 }
 
 // 撤离点接口
@@ -191,6 +195,7 @@ export default class GameScene extends Phaser.Scene {
     // 相机摇晃功能已移除
     private playerIsInvincible: boolean = false; // 玩家无敌状态
     private enemiesKilled: number = 0; // 已击杀敌人数量
+    private playerMoving: boolean = false; // 玩家是否在移动
 
     
     // 输入控制
@@ -1003,22 +1008,51 @@ export default class GameScene extends Phaser.Scene {
         });
     }
     
-    // 添加补给箱
+    // 添加补给箱 - 精美的设计
     private addSupplyCrate(x: number, y: number) {
         const crate = this.add.graphics();
         
-        // 箱子主体
+        // 箱子阴影
+        crate.fillStyle(0x2a2a2a, 0.6);
+        crate.fillEllipse(0, 5, 55, 15);
+        
+        // 箱子主体 - 3D效果
         crate.fillStyle(0x654321, 1);
         crate.fillRect(-25, -20, 50, 40);
         
+        // 顶部高光
+        crate.fillStyle(0x8B4513, 1);
+        crate.fillRect(-25, -20, 50, 15);
+        
+        // 侧面阴影
+        crate.fillStyle(0x4a3a2a, 1);
+        crate.fillRect(-25, 5, 12, 35);
+        
         // 箱子边框
-        crate.lineStyle(2, 0x444444, 1);
+        crate.lineStyle(3, 0x444444, 1);
         crate.strokeRect(-25, -20, 50, 40);
         
-        // 箱子细节
-        crate.fillStyle(0x8B4513, 1);
-        crate.fillRect(-20, -10, 40, 5);
-        crate.fillRect(-10, -20, 5, 40);
+        // 箱子细节 - 木板纹理
+        crate.lineStyle(1, 0x5a4a3a, 0.8);
+        for (let i = 0; i < 3; i++) {
+            crate.beginPath();
+            crate.moveTo(-25 + i * 25, -20);
+            crate.lineTo(-25 + i * 25, 20);
+            crate.stroke();
+        }
+        
+        // 金属扣件
+        crate.fillStyle(0x888888, 1);
+        crate.fillRect(-20, -15, 8, 3);
+        crate.fillRect(12, -15, 8, 3);
+        crate.fillRect(-20, 12, 8, 3);
+        crate.fillRect(12, 12, 8, 3);
+        
+        // 顶部标签
+        crate.fillStyle(0x2ecc71, 1);
+        crate.fillRoundedRect(-15, -25, 30, 8, 2);
+        crate.lineStyle(1, 0x27ae60, 1);
+        crate.strokeRoundedRect(-15, -25, 30, 8, 2);
         
         crate.setPosition(x, y);
         crate.setDepth(52);
@@ -1030,26 +1064,51 @@ export default class GameScene extends Phaser.Scene {
         body.setDepth(52);
     }
     
-    // 添加柱子
+    // 添加柱子 - 精美的设计
     private addColumn(x: number, y: number) {
         const column = this.add.graphics();
         
-        // 柱子主体
-        column.fillStyle(0x6D4C41, 1);
-        column.fillRect(-20, -30, 40, 60);
+        // 柱子阴影
+        column.fillStyle(0x2a2a2a, 0.5);
+        column.fillEllipse(0, 35, 45, 15);
         
-        // 柱子纹理
-        column.lineStyle(1, 0x8D6C61, 0.5);
-        for (let i = 0; i < 4; i++) {
+        // 柱子主体 - 圆柱形效果
+        column.fillStyle(0x6D4C41, 1);
+        column.fillCircle(0, 0, 20);
+        
+        // 柱子高光
+        column.fillStyle(0x8D6C61, 0.8);
+        column.fillCircle(-5, -20, 15);
+        
+        // 柱子阴影面
+        column.fillStyle(0x5D3C31, 0.8);
+        column.fillCircle(5, 20, 15);
+        
+        // 柱子纹理 - 纵向线条
+        column.lineStyle(2, 0x8D6C61, 0.6);
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2;
             column.beginPath();
-            column.moveTo(-20 + i * 20, -30);
-            column.lineTo(-20 + i * 20, 30);
+            column.moveTo(0, 0);
+            column.lineTo(Math.cos(angle) * 20, Math.sin(angle) * 20);
             column.stroke();
         }
         
-        // 柱子顶部装饰
+        // 柱子顶部装饰 - 圆盘
         column.fillStyle(0x8D6C61, 1);
-        column.fillRect(-25, -35, 50, 5);
+        column.fillCircle(0, -30, 22);
+        column.lineStyle(2, 0x6D4C41, 1);
+        column.strokeCircle(0, -30, 22);
+        
+        // 顶部装饰细节
+        column.fillStyle(0x9D7C71, 1);
+        column.fillCircle(0, -30, 18);
+        
+        // 底部基座
+        column.fillStyle(0x5D3C31, 1);
+        column.fillCircle(0, 30, 22);
+        column.lineStyle(2, 0x4D2C21, 1);
+        column.strokeCircle(0, 30, 22);
         
         column.setPosition(x, y);
         column.setDepth(55);
@@ -1061,30 +1120,73 @@ export default class GameScene extends Phaser.Scene {
         body.setDepth(55);
     }
     
-    // 添加货架
+    // 添加货架 - 精美的设计
     private addShelf(x: number, y: number) {
         const shelf = this.add.graphics();
         
-        // 货架主体
+        // 货架阴影
+        shelf.fillStyle(0x2a2a2a, 0.5);
+        shelf.fillEllipse(0, 25, 65, 15);
+        
+        // 货架主体 - 3D效果
         shelf.fillStyle(0x8B4513, 1);
         shelf.fillRect(-30, -20, 60, 40);
         
-        // 货架层板
+        // 顶部高光
+        shelf.fillStyle(0x9B5533, 1);
+        shelf.fillRect(-30, -20, 60, 8);
+        
+        // 侧面阴影
+        shelf.fillStyle(0x6B3513, 1);
+        shelf.fillRect(-30, -12, 8, 32);
+        
+        // 货架层板 - 多层设计
         shelf.fillStyle(0x654321, 1);
-        shelf.fillRect(-28, -5, 56, 3);
+        shelf.fillRect(-28, -5, 56, 4);
+        shelf.fillRect(-28, 8, 56, 4);
         
-        // 货架支柱
+        // 层板高光
+        shelf.fillStyle(0x754321, 0.8);
+        shelf.fillRect(-28, -5, 56, 2);
+        shelf.fillRect(-28, 8, 56, 2);
+        
+        // 货架支柱 - 更粗更明显
         shelf.fillStyle(0x553311, 1);
-        shelf.fillRect(-30, -20, 5, 40);
-        shelf.fillRect(25, -20, 5, 40);
+        shelf.fillRect(-30, -20, 6, 40);
+        shelf.fillRect(24, -20, 6, 40);
         
-        // 添加物品
-        shelf.fillStyle(0x3498db, 0.8);
-        shelf.fillRect(-25, 5, 15, 10);
-        shelf.fillStyle(0xe74c3c, 0.8);
-        shelf.fillRect(0, 5, 15, 10);
-        shelf.fillStyle(0x2ecc71, 0.8);
-        shelf.fillRect(-25, -15, 15, 10);
+        // 支柱装饰
+        shelf.fillStyle(0x653311, 1);
+        shelf.fillRect(-29, -20, 4, 40);
+        shelf.fillRect(25, -20, 4, 40);
+        
+        // 添加物品 - 更精美的设计
+        // 蓝色物品（圆形）
+        shelf.fillStyle(0x3498db, 0.9);
+        shelf.fillCircle(-17, 10, 6);
+        shelf.lineStyle(1, 0x2874a6, 1);
+        shelf.strokeCircle(-17, 10, 6);
+        
+        // 红色物品（方形）
+        shelf.fillStyle(0xe74c3c, 0.9);
+        shelf.fillRoundedRect(3, 6, 12, 12, 2);
+        shelf.lineStyle(1, 0xc0392b, 1);
+        shelf.strokeRoundedRect(3, 6, 12, 12, 2);
+        
+        // 绿色物品（三角形）
+        shelf.fillStyle(0x2ecc71, 0.9);
+        shelf.beginPath();
+        shelf.moveTo(-17, -11);
+        shelf.lineTo(-9, -11);
+        shelf.lineTo(-13, -17);
+        shelf.closePath();
+        shelf.fill();
+        shelf.lineStyle(1, 0x27ae60, 1);
+        shelf.strokePath();
+        
+        // 边框
+        shelf.lineStyle(2, 0x553311, 1);
+        shelf.strokeRect(-30, -20, 60, 40);
         
         shelf.setPosition(x, y);
         shelf.setDepth(52);
@@ -1191,18 +1293,50 @@ export default class GameScene extends Phaser.Scene {
         body.setDepth(52);
     }
     
-    // 添加杂物
+    // 添加杂物 - 精美的设计
     private addDebris(x: number, y: number) {
         const debris = this.add.graphics();
         
-        // 杂物堆
-        debris.fillStyle(0x555555, 1);
-        debris.fillRect(-20, -10, 40, 20);
+        // 杂物阴影
+        debris.fillStyle(0x1a1a1a, 0.5);
+        debris.fillEllipse(0, 12, 45, 12);
         
-        // 杂物细节
+        // 杂物堆主体 - 不规则形状
+        debris.fillStyle(0x555555, 1);
+        debris.beginPath();
+        debris.moveTo(-20, 0);
+        debris.lineTo(-15, -10);
+        debris.lineTo(5, -8);
+        debris.lineTo(18, -5);
+        debris.lineTo(20, 5);
+        debris.lineTo(15, 12);
+        debris.lineTo(-10, 10);
+        debris.closePath();
+        debris.fill();
+        
+        // 杂物细节 - 多个不规则碎片
         debris.fillStyle(0x666666, 1);
-        debris.fillRect(-15, -5, 10, 10);
-        debris.fillRect(5, -5, 10, 10);
+        debris.fillRect(-15, -5, 8, 8);
+        debris.fillCircle(8, -3, 5);
+        debris.fillRect(5, 3, 10, 6);
+        
+        // 金属碎片
+        debris.fillStyle(0x888888, 1);
+        debris.fillRect(-8, 2, 6, 4);
+        debris.fillCircle(12, 5, 3);
+        
+        // 边框
+        debris.lineStyle(1, 0x444444, 0.8);
+        debris.beginPath();
+        debris.moveTo(-20, 0);
+        debris.lineTo(-15, -10);
+        debris.lineTo(5, -8);
+        debris.lineTo(18, -5);
+        debris.lineTo(20, 5);
+        debris.lineTo(15, 12);
+        debris.lineTo(-10, 10);
+        debris.closePath();
+        debris.stroke();
         
         debris.setPosition(x, y);
         debris.setDepth(52);
@@ -1477,9 +1611,9 @@ export default class GameScene extends Phaser.Scene {
                     graphic.strokeRect(-15, -15, 30, 30);
                 }
                 
-                // 检测E键按下
-                if (this.eKeyPressed) {
-                    this.eKeyPressed = false; // 重置标志
+                // 检测E键按下（使用justDown确保只触发一次）
+                const eKey = (this.keys as any)?.e;
+                if (eKey && Phaser.Input.Keyboard.JustDown(eKey)) {
                     this.activateEvacuationSwitch();
                 }
             } else {
@@ -2094,36 +2228,102 @@ export default class GameScene extends Phaser.Scene {
             this.playerX = (startRoomX + startRoomW / 2) * gridSize; // 1200
             this.playerY = (startRoomY + startRoomH / 2) * gridSize; // 1120
             
-            // 创建玩家图形 - 更详细的设计
+            // 创建玩家图形 - 现代化友好的英雄角色设计
             this.player = this.add.graphics();
             
-            // 玩家主体
-            this.player.fillStyle(0x00ff00, 1);
-            this.player.fillCircle(0, 0, 15);
+            // 玩家外圈光环（友好标识）
+            this.player.lineStyle(4, 0x00ff88, 0.8);
+            this.player.strokeCircle(0, 0, 20);
             
-            // 边框
-            this.player.lineStyle(3, 0x006600, 1);
-            this.player.strokeCircle(0, 0, 15);
+            // 玩家主体 - 圆形身体（更亮更鲜艳）
+            this.player.fillStyle(0x00ff88, 1);
+            this.player.fillCircle(0, 0, 18);
             
-            // 添加细节 - 中心亮点
-            this.player.fillStyle(0x33ff33, 1);
-            this.player.fillCircle(0, 0, 6);
+            // 外边框（更粗更明显）
+            this.player.lineStyle(4, 0x00cc66, 1);
+            this.player.strokeCircle(0, 0, 18);
             
-            // 添加方向指示器
-            this.player.fillStyle(0x00cc00, 1);
+            // 身体高光（左上角）
+            this.player.fillStyle(0x88ffaa, 1);
+            this.player.fillCircle(-4, -4, 10);
+            
+            // 身体阴影（右下角）
+            this.player.fillStyle(0x00cc66, 1);
+            this.player.fillCircle(4, 4, 10);
+            
+            // 中心能量核心（多层设计）
+            this.player.fillStyle(0xffffff, 1);
+            this.player.fillCircle(0, 0, 7);
+            this.player.fillStyle(0x00ff88, 1);
+            this.player.fillCircle(0, 0, 5);
+            this.player.fillStyle(0xaaffcc, 1);
+            this.player.fillCircle(0, 0, 3);
+            
+            // 头部（更大更圆润）
+            this.player.fillStyle(0x00ff88, 1);
+            this.player.fillCircle(0, -10, 12);
+            this.player.lineStyle(3, 0x00cc66, 1);
+            this.player.strokeCircle(0, -10, 12);
+            
+            // 头部高光
+            this.player.fillStyle(0x88ffaa, 0.9);
+            this.player.fillCircle(-3, -12, 5);
+            
+            // 眼睛（更大更友好）
+            this.player.fillStyle(0x000000, 1);
+            this.player.fillCircle(-4, -12, 3);
+            this.player.fillCircle(4, -12, 3);
+            // 眼睛高光（两个亮点）
+            this.player.fillStyle(0xffffff, 1);
+            this.player.fillCircle(-3.5, -12.5, 1.5);
+            this.player.fillCircle(4.5, -12.5, 1.5);
+            this.player.fillCircle(-5, -12.5, 0.8);
+            this.player.fillCircle(3, -12.5, 0.8);
+            
+            // 方向指示器 - 箭头（身体下方，更明显）
+            this.player.fillStyle(0x00cc66, 1);
             this.player.beginPath();
-            this.player.moveTo(0, -15);
-            this.player.lineTo(5, -5);
-            this.player.lineTo(-5, -5);
+            this.player.moveTo(0, 18);
+            this.player.lineTo(-8, 10);
+            this.player.lineTo(8, 10);
             this.player.closePath();
             this.player.fill();
+            this.player.lineStyle(2, 0x00aa55, 1);
+            this.player.strokePath();
             
-            // 添加发光效果
+            // 装饰条纹（身体中间，更明显）
+            this.player.lineStyle(3, 0x00cc66, 0.8);
+            this.player.beginPath();
+            this.player.moveTo(-14, 0);
+            this.player.lineTo(14, 0);
+            this.player.strokePath();
+            
+            // 能量环（围绕身体的装饰环）
+            this.player.lineStyle(2, 0x88ffaa, 0.6);
+            this.player.strokeCircle(0, 0, 15);
+            
+            // 友好标识 - 顶部小星星
+            this.player.fillStyle(0xffff00, 1);
+            this.drawStar(this.player, 0, -22, 3, 2);
+            this.player.fillPath();
+            
+            // 添加友好的发光效果（更亮更明显）
             const glowGraphic = this.add.graphics();
-            glowGraphic.fillStyle(0x00ff00, 0.3);
-            glowGraphic.fillCircle(0, 0, 20);
+            glowGraphic.fillStyle(0x00ff88, 0.4);
+            glowGraphic.fillCircle(0, 0, 25);
+            glowGraphic.fillStyle(0x88ffaa, 0.2);
+            glowGraphic.fillCircle(0, 0, 35);
             glowGraphic.setPosition(this.playerX, this.playerY);
             glowGraphic.setDepth(99);
+            
+            // 呼吸动画效果
+            this.tweens.add({
+                targets: glowGraphic,
+                alpha: [0.3, 0.5, 0.3],
+                duration: 2000,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
             
             this.player.setPosition(this.playerX, this.playerY);
             this.player.setDepth(100);
@@ -2256,6 +2456,31 @@ export default class GameScene extends Phaser.Scene {
             
             // 应用速度
             this.playerBody.setVelocity(velocityX, velocityY);
+            
+            // 玩家移动视觉反馈
+            if (magnitude > 0) {
+                // 移动时：稍微放大，增加速度感
+                if (!this.playerMoving) {
+                    this.playerMoving = true;
+                    this.tweens.add({
+                        targets: this.player,
+                        scale: { from: 1.0, to: 1.05 },
+                        duration: 100,
+                        ease: 'Power2'
+                    });
+                }
+            } else {
+                // 静止时：恢复原大小
+                if (this.playerMoving) {
+                    this.playerMoving = false;
+                    this.tweens.add({
+                        targets: this.player,
+                        scale: { from: 1.05, to: 1.0 },
+                        duration: 100,
+                        ease: 'Power2'
+                    });
+                }
+            }
             
             // 相机跟随由setupCamera中的startFollow处理
             
@@ -5353,48 +5578,71 @@ export default class GameScene extends Phaser.Scene {
         }
     }
     
-    // 掉落物品
+    // 掉落物品 - 使用精美的物品外观系统
     private dropItem(x: number, y: number) {
         try {
-            const itemTypes = ['health', 'armor', 'ammo', 'money'];
-            const type = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+            // 随机选择掉落物品类型
+            const itemTypes = [
+                { type: 'medical', value: 20 },
+                { type: 'ammo', subtype: 'rifle', value: 30 },
+                { type: 'money', value: 50 },
+                { type: 'armor', value: 40 }
+            ];
+            const selectedType = itemTypes[Math.floor(Math.random() * itemTypes.length)];
             
-            const item = this.add.graphics();
-            let color = 0xFF0000; // 默认红色
-            
-            switch (type) {
-                case 'health': color = 0xFF0000; break;
-                case 'armor': color = 0x0066CC; break;
-                case 'ammo': color = 0x00FF00; break;
-                case 'money': color = 0xFFFF00; break;
-            }
-            
-            item.fillStyle(color, 1);
-            item.fillCircle(0, 0, 10);
-            item.setPosition(x, y);
-            
-            // 添加物理
-            const itemBody = this.physics.add.sprite(x, y, '');
-            itemBody.setSize(20, 20);
-            itemBody.setData('type', type);
-            itemBody.setData('graphic', item);
-            
-            // 随机初速度
-            itemBody.setVelocity(
-                Phaser.Math.Between(-100, 100),
-                Phaser.Math.Between(-100, 100)
-            );
-            
-            // 创建GameItem对象并加入物品数组
-            const gameItem: GameItem = {
-                id: `dropped-item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                type: 'medical', // 默认类型
+            // 使用已有的精美物品创建系统
+            const itemDef: any = {
                 x: x,
                 y: y,
-                graphic: this.add.graphics(), // 创建一个空的图形对象
-                body: itemBody
+                type: selectedType.type,
+                value: selectedType.value,
+                name: this.getItemTypeName(selectedType.type)
             };
-            this.items.push(gameItem);
+            
+            if (selectedType.subtype) {
+                itemDef.subtype = selectedType.subtype;
+            }
+            
+            // 生成唯一索引
+            const index = this.items.length;
+            
+            // 使用现有的createGameItem方法创建精美的物品
+            const item = this.createGameItem(itemDef, index);
+            
+            if (item) {
+                this.items.push(item);
+                
+                // 添加掉落动画效果
+                if (item.body) {
+                    // 随机初速度（向上弹跳）
+                    const bounceAngle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI / 3;
+                    const bounceForce = 150 + Math.random() * 100;
+                    item.body.setVelocity(
+                        Math.cos(bounceAngle) * bounceForce,
+                        Math.sin(bounceAngle) * bounceForce
+                    );
+                    
+                    // 添加旋转动画
+                    if (item.graphic) {
+                        this.tweens.add({
+                            targets: item.graphic,
+                            angle: 360,
+                            duration: 2000,
+                            repeat: -1,
+                            ease: 'Linear'
+                        });
+                    }
+                    
+                    // 添加衰减的弹跳动画
+                    this.tweens.add({
+                        targets: item.body,
+                        velocityX: 0,
+                        velocityY: 0,
+                        duration: 1500,
+                        ease: 'Power2.easeOut'
+                    });
+                }
+            }
         } catch (error) {
             console.error('掉落物品时出错:', error);
         }
@@ -5649,190 +5897,392 @@ export default class GameScene extends Phaser.Scene {
             // 根据物品类型设置不同的颜色、形状和特效
             switch (def.type) {
                 case 'money':
-                    // 金币 - 圆形，金色，带光芒效果
+                    // 金币 - 更精美的设计
+                    // 外圈金色
                     graphic.fillStyle(0xffd700, 1);
-                    graphic.fillCircle(0, 0, 10);
+                    graphic.fillCircle(0, 0, 12);
                     graphic.lineStyle(2, 0xffa500, 1);
-                    graphic.strokeCircle(0, 0, 10);
+                    graphic.strokeCircle(0, 0, 12);
+                    // 内圈高光
+                    graphic.fillStyle(0xffffaa, 1);
+                    graphic.fillCircle(-3, -3, 5);
+                    // $符号（简化版）
+                    graphic.lineStyle(2, 0xffffff, 1);
+                    graphic.beginPath();
+                    graphic.moveTo(-2, -6);
+                    graphic.lineTo(-2, 6);
+                    // S形的上半部分
+                    graphic.moveTo(-2, -4);
+                    graphic.lineTo(0, -4);
+                    graphic.lineTo(0, -2);
+                    graphic.lineTo(2, -2);
+                    // S形的下半部分
+                    graphic.moveTo(0, 2);
+                    graphic.lineTo(-2, 2);
+                    graphic.lineTo(-2, 4);
+                    graphic.lineTo(2, 4);
+                    graphic.strokePath();
                     
                     // 添加光芒效果
-                    glowGraphic = this.createGlowEffect(0xffd700, def.x, def.y);
+                    glowGraphic = this.createGlowEffect(0xffd700, def.x, def.y, 25);
                     
                     // 添加旋转动画
                     this.addItemAnimation(graphic, 'rotate', def.x, def.y);
                     break;
                     
                 case 'medical':
-                    // 医疗物品 - 红色十字
-                    graphic.fillStyle(0xff0000, 1);
-                    graphic.fillRect(-8, -3, 16, 6);
-                    graphic.fillRect(-3, -8, 6, 16);
+                    // 医疗物品 - 更精美的医疗包设计
+                    // 医疗包主体
+                    graphic.fillStyle(0x2ecc71, 1);
+                    graphic.fillRoundedRect(-10, -8, 20, 16, 3);
+                    graphic.lineStyle(2, 0x27ae60, 1);
+                    graphic.strokeRoundedRect(-10, -8, 20, 16, 3);
+                    // 红色十字
+                    graphic.fillStyle(0xe74c3c, 1);
+                    graphic.fillRect(-6, -2, 12, 4);
+                    graphic.fillRect(-2, -6, 4, 12);
+                    // 白色十字边框
                     graphic.lineStyle(1, 0xffffff, 1);
-                    graphic.strokeRect(-8, -3, 16, 6);
-                    graphic.strokeRect(-3, -8, 6, 16);
+                    graphic.strokeRect(-6, -2, 12, 4);
+                    graphic.strokeRect(-2, -6, 4, 12);
+                    // 顶部小提手（简化版）
+                    graphic.lineStyle(2, 0x34495e, 1);
+                    graphic.beginPath();
+                    graphic.moveTo(-4, -8);
+                    graphic.lineTo(0, -11);
+                    graphic.lineTo(4, -8);
+                    graphic.strokePath();
                     
                     // 添加脉动效果
                     this.addItemAnimation(graphic, 'pulse', def.x, def.y);
+                    glowGraphic = this.createGlowEffect(0x2ecc71, def.x, def.y, 20);
                     break;
                     
                 case 'armor':
-                    // 护甲 - 蓝色盾牌形状
-                    graphic.fillStyle(0x0066cc, 1);
+                    // 护甲 - 精美的盾牌设计
+                    // 盾牌外圈
+                    graphic.fillStyle(0x3498db, 1);
                     graphic.beginPath();
-                    graphic.moveTo(0, -8);
-                    graphic.lineTo(-7, 0);
-                    graphic.lineTo(-5, 6);
-                    graphic.lineTo(5, 6);
-                    graphic.lineTo(7, 0);
+                    graphic.moveTo(0, -10);
+                    graphic.lineTo(-8, -5);
+                    graphic.lineTo(-9, 2);
+                    graphic.lineTo(-6, 8);
+                    graphic.lineTo(6, 8);
+                    graphic.lineTo(9, 2);
+                    graphic.lineTo(8, -5);
                     graphic.closePath();
                     graphic.fill();
-                    graphic.lineStyle(1, 0x00ccff, 1);
-                    graphic.stroke();
+                    // 内圈高光
+                    graphic.fillStyle(0x5dade2, 1);
+                    graphic.beginPath();
+                    graphic.moveTo(0, -8);
+                    graphic.lineTo(-5, -3);
+                    graphic.lineTo(-6, 3);
+                    graphic.lineTo(-4, 6);
+                    graphic.lineTo(4, 6);
+                    graphic.lineTo(6, 3);
+                    graphic.lineTo(5, -3);
+                    graphic.closePath();
+                    graphic.fill();
+                    // 盾牌中心装饰
+                    graphic.fillStyle(0x1b4f72, 1);
+                    graphic.fillCircle(0, 0, 4);
+                    graphic.lineStyle(2, 0x85c1e9, 1);
+                    graphic.strokeCircle(0, 0, 4);
+                    // 外边框
+                    graphic.lineStyle(2, 0x1b4f72, 1);
+                    graphic.beginPath();
+                    graphic.moveTo(0, -10);
+                    graphic.lineTo(-8, -5);
+                    graphic.lineTo(-9, 2);
+                    graphic.lineTo(-6, 8);
+                    graphic.lineTo(6, 8);
+                    graphic.lineTo(9, 2);
+                    graphic.lineTo(8, -5);
+                    graphic.closePath();
+                    graphic.strokePath();
                     
                     // 添加轻微摇摆
                     this.addItemAnimation(graphic, 'sway', def.x, def.y);
+                    glowGraphic = this.createGlowEffect(0x3498db, def.x, def.y, 22);
                     break;
                     
                 case 'artifact':
-                    // 遗物 - 紫色，复杂形状，强烈发光
-                    graphic.fillStyle(0x9900ff, 1);
-                    graphic.beginPath();
-                    graphic.moveTo(0, -12);
-                    graphic.lineTo(8, 8);
-                    graphic.lineTo(-8, 8);
-                    graphic.closePath();
-                    graphic.fill();
-                    graphic.fillStyle(0xcc66ff, 1);
+                    // 遗物 - 更神秘的宝石设计
+                    // 外圈紫色
+                    graphic.fillStyle(0x8e44ad, 1);
+                    graphic.fillCircle(0, 0, 14);
+                    // 内圈渐变
+                    graphic.fillStyle(0xbb8fce, 1);
+                    graphic.fillCircle(0, 0, 10);
+                    // 核心发光
+                    graphic.fillStyle(0xf4d03f, 1);
                     graphic.fillCircle(0, 0, 6);
+                    // 装饰星星
+                    this.drawStar(graphic, 0, 0, 5, 8);
+                    graphic.fillStyle(0xffffff, 0.8);
+                    graphic.fillPath();
+                    // 外边框
+                    graphic.lineStyle(2, 0x6c3483, 1);
+                    graphic.strokeCircle(0, 0, 14);
+                    graphic.lineStyle(1, 0xf4d03f, 0.6);
+                    graphic.strokeCircle(0, 0, 10);
                     
                     // 强烈的发光效果
-                    glowGraphic = this.createGlowEffect(0x9900ff, def.x, def.y, 30);
+                    glowGraphic = this.createGlowEffect(0x8e44ad, def.x, def.y, 35);
                     
                     // 复杂动画
                     this.addItemAnimation(graphic, 'float', def.x, def.y);
                     break;
                     
                 case 'weapon':
-                    // 根据武器子类型设置不同的颜色和形状
+                    // 根据武器子类型设置不同的颜色和形状 - 更精美的设计
                     let weaponColor = 0xff8c00; // 默认橙色
                     switch (def.subtype) {
                         case 'rifle':
-                            weaponColor = 0x00ff00; // 步枪 - 绿色
-                            // 步枪形状 - 较长
-                            graphic.fillStyle(weaponColor, 1);
-                            graphic.fillRect(-10, -3, 20, 6);
-                            graphic.fillRect(-8, -6, 6, 12);
-                            graphic.fillRect(8, -4, 4, 8);
+                            weaponColor = 0x2ecc71; // 步枪 - 绿色
+                            // 步枪形状 - 更精细
+                            // 枪管
+                            graphic.fillStyle(0x27ae60, 1);
+                            graphic.fillRect(-12, -3, 22, 6);
+                            graphic.lineStyle(1, 0x1e8449, 1);
+                            graphic.strokeRect(-12, -3, 22, 6);
+                            // 枪托
+                            graphic.fillStyle(0x229954, 1);
+                            graphic.fillRect(-12, -5, 6, 10);
+                            graphic.fillRect(-10, -6, 4, 12);
+                            // 瞄准镜
+                            graphic.fillStyle(0x1e8449, 1);
+                            graphic.fillRect(8, -5, 4, 10);
+                            graphic.fillCircle(10, 0, 3);
+                            graphic.fillStyle(0xffffff, 0.5);
+                            graphic.fillCircle(10, 0, 1);
+                            // 枪口
+                            graphic.fillStyle(0x1a1a1a, 1);
+                            graphic.fillRect(10, -2, 2, 4);
                             break;
                             
                         case 'shotgun':
-                            weaponColor = 0xff7700; // 霰弹枪 - 橙黄色
-                            // 霰弹枪形状 - 较短但更粗
-                            graphic.fillStyle(weaponColor, 1);
-                            graphic.fillRect(-8, -5, 16, 10);
-                            graphic.fillRect(-12, -3, 8, 6);
-                            graphic.fillRect(6, -4, 6, 8);
+                            weaponColor = 0xe67e22; // 霰弹枪 - 橙黄色
+                            // 霰弹枪形状 - 双管设计
+                            // 主体
+                            graphic.fillStyle(0xd35400, 1);
+                            graphic.fillRoundedRect(-10, -6, 18, 12, 2);
+                            // 双管
+                            graphic.fillStyle(0x1a1a1a, 1);
+                            graphic.fillRect(8, -4, 3, 3);
+                            graphic.fillRect(8, 1, 3, 3);
+                            // 枪托
+                            graphic.fillStyle(0xba4a00, 1);
+                            graphic.fillRect(-12, -4, 6, 8);
+                            graphic.fillRect(-10, -5, 4, 10);
+                            // 装饰条纹
+                            graphic.lineStyle(1, 0xe67e22, 0.8);
+                            graphic.strokeRect(-8, -4, 16, 8);
                             break;
                             
                         case 'sniper':
-                            weaponColor = 0x0000ff; // 狙击枪 - 蓝色
-                            // 狙击枪形状 - 最长
-                            graphic.fillStyle(weaponColor, 1);
-                            graphic.fillRect(-15, -2, 30, 4);
-                            graphic.fillRect(-12, -5, 6, 10);
-                            graphic.fillRect(12, -3, 5, 6);
+                            weaponColor = 0x3498db; // 狙击枪 - 蓝色
+                            // 狙击枪形状 - 带瞄准镜的长枪
+                            // 枪管
+                            graphic.fillStyle(0x2874a6, 1);
+                            graphic.fillRect(-16, -2, 30, 4);
+                            graphic.lineStyle(1, 0x1b4f72, 1);
+                            graphic.strokeRect(-16, -2, 30, 4);
+                            // 瞄准镜
+                            graphic.fillStyle(0x1b4f72, 1);
+                            graphic.fillRect(-10, -6, 8, 12);
+                            graphic.fillStyle(0x000000, 1);
+                            graphic.fillCircle(-6, 0, 4);
+                            graphic.fillStyle(0x00ff00, 0.3);
+                            graphic.fillCircle(-6, 0, 3);
+                            // 枪托
+                            graphic.fillStyle(0x2874a6, 1);
+                            graphic.fillRect(-16, -4, 6, 8);
+                            // 枪口
+                            graphic.fillStyle(0x1a1a1a, 1);
+                            graphic.fillRect(14, -1, 2, 2);
                             break;
                             
                         default:
-                            // 默认武器形状
-                            graphic.fillStyle(weaponColor, 1);
-                            graphic.beginPath();
-                            graphic.moveTo(-7, 0);
-                            graphic.lineTo(7, 2);
-                            graphic.lineTo(7, -2);
-                            graphic.closePath();
-                            graphic.fill();
-                            graphic.fillStyle(0xffa500, 1);
-                            graphic.fillRect(-7, -4, 4, 8);
+                            // 默认手枪形状 - 更精美
+                            weaponColor = 0xff8c00;
+                            // 枪身
+                            graphic.fillStyle(0xe67e22, 1);
+                            graphic.fillRoundedRect(-8, -4, 14, 8, 2);
+                            // 枪管
+                            graphic.fillStyle(0x1a1a1a, 1);
+                            graphic.fillRect(6, -2, 4, 4);
+                            // 握把
+                            graphic.fillStyle(0x8b4513, 1);
+                            graphic.fillRect(-8, 2, 6, 4);
+                            graphic.lineStyle(1, 0x654321, 1);
+                            graphic.strokeRect(-8, 2, 6, 4);
+                            // 扳机
+                            graphic.fillStyle(0x1a1a1a, 1);
+                            graphic.fillRect(-2, 4, 2, 3);
                             break;
                     }
                     
                     // 添加相应颜色的发光效果
-                    glowGraphic = this.createGlowEffect(weaponColor, def.x, def.y, 20);
+                    glowGraphic = this.createGlowEffect(weaponColor, def.x, def.y, 22);
                     
                     // 添加轻微旋转
                     this.addItemAnimation(graphic, 'rotate', def.x, def.y, 5000);
                     break;
                     
                 case 'ammo':
-                    // 根据弹药类型设置不同的颜色
-                    let ammoColor = 0x00ff00; // 默认绿色
+                    // 根据弹药类型设置不同的颜色和形状 - 更精美的弹药设计
+                    let ammoColor = 0x2ecc71; // 默认绿色
                     let ammoCount = def.quantity || 1;
                     
                     switch (def.subtype) {
                         case 'rifle':
-                            ammoColor = 0x00ff00; // 步枪弹药 - 绿色
+                            ammoColor = 0x2ecc71; // 步枪弹药 - 绿色
                             break;
                             
                         case 'shotgun':
-                            ammoColor = 0xff7700; // 霰弹弹药 - 橙黄色
+                            ammoColor = 0xe67e22; // 霰弹弹药 - 橙黄色
                             break;
                             
                         case 'sniper':
-                            ammoColor = 0x0000ff; // 狙击弹药 - 蓝色
+                            ammoColor = 0x3498db; // 狙击弹药 - 蓝色
                             break;
                             
                         default:
-                            ammoColor = 0x00ff00; // 默认绿色
+                            ammoColor = 0x2ecc71; // 默认绿色
                             break;
                     }
                     
-                    // 弹药形状
+                    // 弹药形状 - 更真实的子弹设计
+                    // 弹壳
+                    graphic.fillStyle(0xd5a674, 1); // 黄铜色
+                    graphic.fillRect(-7, -3, 10, 6);
+                    graphic.lineStyle(1, 0xb8860b, 1);
+                    graphic.strokeRect(-7, -3, 10, 6);
+                    // 弹头
+                    const darkerAmmo = Phaser.Display.Color.ValueToColor(ammoColor).darken(30).color;
+                    graphic.fillStyle(darkerAmmo, 1);
+                    graphic.beginPath();
+                    graphic.moveTo(3, -3);
+                    graphic.lineTo(7, 0);
+                    graphic.lineTo(3, 3);
+                    graphic.closePath();
+                    graphic.fill();
+                    // 弹头高光
                     graphic.fillStyle(ammoColor, 1);
-                    graphic.fillRect(-6, -3, 12, 6);
-                    graphic.fillCircle(6, 0, 3);
-                    graphic.lineStyle(1, 0xffffff, 0.8);
-                    graphic.strokeRect(-6, -3, 12, 6);
+                    graphic.fillRect(3, -2, 3, 4);
+                    // 弹壳装饰
+                    graphic.lineStyle(1, 0x8b6914, 0.6);
+                    graphic.strokeRect(-6, -2, 8, 4);
                     
-                    // 显示弹药数量
+                    // 显示弹药数量徽章
                     if (ammoCount > 1) {
-                        const countText = this.add.text(def.x, def.y - 15, `${ammoCount}`, {
+                        const badge = this.add.graphics();
+                        badge.fillStyle(0x2c3e50, 0.9);
+                        badge.fillCircle(0, -12, 8);
+                        badge.lineStyle(1, 0xffffff, 1);
+                        badge.strokeCircle(0, -12, 8);
+                        badge.setPosition(def.x, def.y);
+                        badge.setDepth(61);
+                        
+                        const countText = this.add.text(def.x, def.y - 12, `${ammoCount}`, {
                             fontSize: '10px',
                             color: '#ffffff',
-                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                            align: 'center'
+                            fontStyle: 'bold',
+                            stroke: '#000000',
+                            strokeThickness: 1
                         });
                         countText.setOrigin(0.5);
-                        countText.setDepth(61);
+                        countText.setDepth(62);
                         // 将文字对象保存到物品中以便后续清理
-                        (def as any).extraGraphic = countText;
+                        (def as any).extraGraphic = [badge, countText];
                     }
                     
                     // 添加脉动效果
                     this.addItemAnimation(graphic, 'pulse', def.x, def.y);
+                    glowGraphic = this.createGlowEffect(ammoColor, def.x, def.y, 18);
                     break;
                     
                 case 'resource':
-                    // 资源类物品 - 灰色方块，用于crafting
-                    graphic.fillStyle(0x888888, 1);
-                    graphic.fillRect(-6, -6, 12, 12);
-                    graphic.lineStyle(1, 0xaaaaaa, 1);
-                    graphic.strokeRect(-6, -6, 12, 12);
+                    // 资源类物品 - 更精美的设计
+                    let resourceColor = 0x95a5a6; // 默认灰色
+                    let resourceShape = 'square';
                     
-                    // 根据子类型添加不同颜色
+                    // 根据子类型设置不同的外观
                     if (def.subtype === 'metal') {
-                        graphic.fillStyle(0xcccccc, 1);
-                        graphic.fillRect(-4, -4, 8, 8);
+                        resourceColor = 0xbdc3c7; // 金属 - 银灰色
+                        resourceShape = 'hexagon';
                     } else if (def.subtype === 'fabric') {
-                        graphic.fillStyle(0xdddddd, 1);
-                        graphic.fillRect(-4, -4, 8, 8);
+                        resourceColor = 0xf8c471; // 布料 - 米黄色
+                        resourceShape = 'circle';
                     } else if (def.subtype === 'electronics') {
-                        graphic.fillStyle(0x00ccff, 0.5);
-                        graphic.fillRect(-4, -4, 8, 8);
+                        resourceColor = 0x3498db; // 电子元件 - 蓝色
+                        resourceShape = 'square';
+                    }
+                    
+                    // 根据形状绘制
+                    if (resourceShape === 'hexagon') {
+                        // 六边形金属
+                        graphic.fillStyle(resourceColor, 1);
+                        graphic.beginPath();
+                        for (let i = 0; i < 6; i++) {
+                            const angle = (Math.PI / 3) * i;
+                            const x = Math.cos(angle) * 8;
+                            const y = Math.sin(angle) * 8;
+                            if (i === 0) graphic.moveTo(x, y);
+                            else graphic.lineTo(x, y);
+                        }
+                        graphic.closePath();
+                        graphic.fill();
+                        graphic.lineStyle(2, 0x7f8c8d, 1);
+                        graphic.strokePath();
+                        // 内部高光
+                        graphic.fillStyle(0xecf0f1, 0.6);
+                        graphic.fillCircle(-2, -2, 3);
+                    } else if (resourceShape === 'circle') {
+                        // 圆形布料
+                        graphic.fillStyle(resourceColor, 1);
+                        graphic.fillCircle(0, 0, 9);
+                        graphic.lineStyle(2, 0xe67e22, 1);
+                        graphic.strokeCircle(0, 0, 9);
+                        // 纹理效果
+                        graphic.lineStyle(1, 0xd4ac0d, 0.5);
+                        for (let i = 0; i < 3; i++) {
+                            const angle = (Math.PI * 2 / 3) * i;
+                            graphic.beginPath();
+                            graphic.moveTo(0, 0);
+                            graphic.lineTo(Math.cos(angle) * 9, Math.sin(angle) * 9);
+                            graphic.strokePath();
+                        }
+                    } else {
+                        // 方形电子元件
+                        graphic.fillStyle(resourceColor, 1);
+                        graphic.fillRoundedRect(-7, -7, 14, 14, 2);
+                        graphic.lineStyle(2, 0x2874a6, 1);
+                        graphic.strokeRoundedRect(-7, -7, 14, 14, 2);
+                        // 电路板效果
+                        graphic.lineStyle(1, 0x1b4f72, 0.8);
+                        graphic.strokeRect(-5, -5, 10, 10);
+                        graphic.beginPath();
+                        graphic.moveTo(-3, -5);
+                        graphic.lineTo(-3, 5);
+                        graphic.moveTo(3, -5);
+                        graphic.lineTo(3, 5);
+                        graphic.moveTo(-5, -3);
+                        graphic.lineTo(5, -3);
+                        graphic.moveTo(-5, 3);
+                        graphic.lineTo(5, 3);
+                        graphic.strokePath();
+                        // 发光点
+                        graphic.fillStyle(0x00ffff, 0.8);
+                        graphic.fillCircle(-3, -3, 1);
+                        graphic.fillCircle(3, 3, 1);
                     }
                     
                     // 添加轻微闪烁效果
                     this.addItemAnimation(graphic, 'pulse', def.x, def.y, 2000);
+                    glowGraphic = this.createGlowEffect(resourceColor, def.x, def.y, 15);
                     break;
             }
             
@@ -5913,13 +6363,18 @@ export default class GameScene extends Phaser.Scene {
                 body,
                 value: finalValue,
                 name: def.name || this.getItemTypeName(def.type),
-                quantity: 1,
+                quantity: def.quantity || 1,
                 glowGraphic: glowGraphic,
                 weight: weight,
                 rarity: rarity,
                 durability: durability,
                 maxDurability: maxDurability
             };
+            
+            // 保存额外图形对象到物品中以便后续清理（如弹药数量徽章）
+            if ((def as any).extraGraphic) {
+                (item as any).extraGraphic = (def as any).extraGraphic;
+            }
             
             return item;
             
@@ -6082,40 +6537,158 @@ export default class GameScene extends Phaser.Scene {
             const graphic = this.add.graphics();
             let eyeGraphic: Phaser.GameObjects.Graphics | null = null;
             
-            // 根据敌人类型设置不同的外观
+            // 根据敌人类型设置不同的外观 - 精美的机器人设计
             switch (def.type) {
                 case 'grunt':
-                    // 普通敌人 - 红色圆形
-                    graphic.fillStyle(0xff3333, 1);
-                    graphic.fillCircle(0, 0, 14);
-                    graphic.lineStyle(2, 0x990000, 1);
-                    graphic.strokeCircle(0, 0, 14);
+                    // 普通敌人 - 红色威胁机器人设计（更明显）
+                    // 威胁外圈（红色警告环）
+                    graphic.lineStyle(3, 0xff0000, 0.8);
+                    graphic.strokeCircle(0, 0, 20);
                     
-                    // 添加眼睛
+                    // 身体主体（更方更硬朗）
+                    graphic.fillStyle(0xff4444, 1);
+                    graphic.fillRect(-14, -10, 28, 20);
+                    graphic.lineStyle(3, 0xcc0000, 1);
+                    graphic.strokeRect(-14, -10, 28, 20);
+                    
+                    // 头部（更方更威胁）
+                    graphic.fillStyle(0xff4444, 1);
+                    graphic.fillRoundedRect(-12, -22, 24, 14, 2);
+                    graphic.lineStyle(3, 0xcc0000, 1);
+                    graphic.strokeRoundedRect(-12, -22, 24, 14, 2);
+                    
+                    // 头部顶部装饰（威胁标识）
+                    graphic.fillStyle(0xcc0000, 1);
+                    graphic.fillRect(-10, -24, 20, 3);
+                    
+                    // 身体高光（更暗，增强威胁感）
+                    graphic.fillStyle(0xff6666, 1);
+                    graphic.fillRect(-10, -8, 20, 10);
+                    
+                    // 身体装饰线条（警告条纹）
+                    graphic.lineStyle(2, 0xcc0000, 1);
+                    graphic.beginPath();
+                    graphic.moveTo(-12, 0);
+                    graphic.lineTo(12, 0);
+                    graphic.strokePath();
+                    
+                    // 肩膀装甲（更突出）
+                    graphic.fillStyle(0xcc0000, 1);
+                    graphic.fillRect(-16, -8, 5, 10);
+                    graphic.fillRect(11, -8, 5, 10);
+                    graphic.lineStyle(2, 0x990000, 1);
+                    graphic.strokeRect(-16, -8, 5, 10);
+                    graphic.strokeRect(11, -8, 5, 10);
+                    
+                    // 腿部（更粗更稳定）
+                    graphic.fillStyle(0xff4444, 1);
+                    graphic.fillRect(-7, 10, 6, 10);
+                    graphic.fillRect(1, 10, 6, 10);
+                    graphic.lineStyle(2, 0xcc0000, 1);
+                    graphic.strokeRect(-7, 10, 6, 10);
+                    graphic.strokeRect(1, 10, 6, 10);
+                    
+                    // 外边框增强（更粗）
+                    graphic.lineStyle(4, 0x990000, 1);
+                    graphic.strokeRect(-14, -10, 28, 20);
+                    
+                    // 添加眼睛（红色威胁）
                     eyeGraphic = this.createEnemyEyes(def.x, def.y, 0xff0000);
                     break;
                     
                 case 'soldier':
-                    // 士兵 - 橙色六边形
-                    graphic.fillStyle(0xff8c00, 1);
-                    this.drawHexagon(graphic, 0, 0, 15);
-                    graphic.lineStyle(2, 0xcc6600, 1);
-                    this.drawHexagon(graphic, 0, 0, 15);
+                    // 士兵 - 橙色六边形精英机器人设计（更威胁）
+                    // 威胁外圈（橙色警告环）
+                    graphic.lineStyle(3, 0xff7700, 0.8);
+                    graphic.strokeCircle(0, 0, 22);
                     
-                    // 添加眼睛
+                    // 六边形主体（更大）
+                    graphic.fillStyle(0xff7700, 1);
+                    this.drawHexagon(graphic, 0, 0, 18);
+                    graphic.lineStyle(4, 0xcc5500, 1);
+                    this.drawHexagon(graphic, 0, 0, 18);
+                    
+                    // 内层六边形（装甲层）
+                    graphic.fillStyle(0xffaa33, 1);
+                    this.drawHexagon(graphic, 0, 0, 14);
+                    graphic.lineStyle(2, 0xcc6600, 1);
+                    this.drawHexagon(graphic, 0, 0, 14);
+                    
+                    // 中心能量核心（更明显）
+                    graphic.fillStyle(0xffffff, 1);
+                    graphic.fillCircle(0, 0, 7);
+                    graphic.fillStyle(0xff7700, 1);
+                    graphic.fillCircle(0, 0, 5);
+                    graphic.fillStyle(0xffcc66, 1);
+                    graphic.fillCircle(0, 0, 3);
+                    
+                    // 装饰角（更突出，像武器）
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (Math.PI / 3) * i;
+                        const x = Math.cos(angle) * 16;
+                        const y = Math.sin(angle) * 16;
+                        graphic.fillStyle(0xcc5500, 1);
+                        graphic.fillCircle(x, y, 4);
+                        graphic.lineStyle(1, 0x993300, 1);
+                        graphic.strokeCircle(x, y, 4);
+                    }
+                    
+                    // 外边框（更粗）
+                    graphic.lineStyle(3, 0xcc5500, 1);
+                    this.drawHexagon(graphic, 0, 0, 18);
+                    
+                    // 添加眼睛（橙色威胁）
                     eyeGraphic = this.createEnemyEyes(def.x, def.y, 0xff8c00);
                     break;
                     
                 case 'captain':
-                    // 队长 - 紫色星形，更强壮
+                    // 队长 - 紫色星形BOSS机器人（最强威胁）
+                    // 多重威胁外圈（紫色能量环）
+                    graphic.lineStyle(3, 0xff00ff, 0.6);
+                    graphic.strokeCircle(0, 0, 28);
+                    graphic.lineStyle(2, 0x9900ff, 0.8);
+                    graphic.strokeCircle(0, 0, 24);
+                    
+                    // 星形主体（更大更威胁）
                     graphic.fillStyle(0x9900ff, 1);
-                    this.drawStar(graphic, 0, 0, 18, 10);
-                    graphic.lineStyle(2, 0x6600cc, 1);
-                    this.drawStar(graphic, 0, 0, 18, 10);
+                    this.drawStar(graphic, 0, 0, 22, 14);
+                    graphic.lineStyle(4, 0x6600cc, 1);
+                    this.drawStar(graphic, 0, 0, 22, 14);
+                    
+                    // 内层星形（装甲层）
+                    graphic.fillStyle(0xbb66ff, 1);
+                    this.drawStar(graphic, 0, 0, 18, 11);
+                    graphic.lineStyle(2, 0x8800dd, 1);
+                    this.drawStar(graphic, 0, 0, 18, 11);
+                    
+                    // 中心能量核心（最强能量）
+                    graphic.fillStyle(0xffffff, 1);
+                    graphic.fillCircle(0, 0, 9);
+                    graphic.fillStyle(0x9900ff, 1);
+                    graphic.fillCircle(0, 0, 7);
+                    graphic.fillStyle(0xf4d03f, 1);
+                    graphic.fillCircle(0, 0, 5);
+                    graphic.fillStyle(0xffffff, 0.8);
+                    graphic.fillCircle(0, 0, 3);
+                    
+                    // 星形装饰点（能量武器）
+                    for (let i = 0; i < 10; i++) {
+                        const angle = (Math.PI / 5) * i;
+                        const x = Math.cos(angle) * 20;
+                        const y = Math.sin(angle) * 20;
+                        graphic.fillStyle(0xf4d03f, 1);
+                        graphic.fillCircle(x, y, 3);
+                        graphic.lineStyle(1, 0xffaa00, 1);
+                        graphic.strokeCircle(x, y, 3);
+                    }
+                    
+                    // 外边框增强（更粗更明显）
+                    graphic.lineStyle(3, 0x6600cc, 1);
+                    this.drawStar(graphic, 0, 0, 22, 14);
                     
                     // 添加眼睛和光环
                     eyeGraphic = this.createEnemyEyes(def.x, def.y, 0x9900ff);
-                    this.createEnemyAura(def.x, def.y, 0x9900ff, 30);
+                    this.createEnemyAura(def.x, def.y, 0x9900ff, 35);
                     break;
             }
             
@@ -6128,23 +6701,58 @@ export default class GameScene extends Phaser.Scene {
             body.setDepth(70);
             body.setCollideWorldBounds(true);
             
-            // 配置物理属性
+            // 配置物理属性（确保敌人可以移动）
             body.setMaxVelocity(def.speed);
             body.setDrag(50);
+            body.setBounce(0); // 无反弹
+            body.setImmovable(false); // 敌人可以移动
             
-            // 创建血量条背景
+            // 创建血量条背景（更精美）
             const healthBarBg = this.add.graphics();
-            healthBarBg.fillStyle(0x000000, 0.8);
-            healthBarBg.fillRect(-20, -30, 40, 4);
+            healthBarBg.fillStyle(0x000000, 0.9);
+            healthBarBg.fillRoundedRect(-22, -32, 44, 6, 2);
+            healthBarBg.lineStyle(1, 0x333333, 1);
+            healthBarBg.strokeRoundedRect(-22, -32, 44, 6, 2);
             healthBarBg.setPosition(def.x, def.y);
             healthBarBg.setDepth(72);
             
-            // 创建血量条
+            // 创建血量条（根据敌人类型使用不同颜色）
             const healthBar = this.add.graphics();
-            healthBar.fillStyle(0x00ff00, 1);
-            healthBar.fillRect(-20, -30, 40, 4);
+            let healthColor = 0xff0000; // 默认红色
+            switch (def.type) {
+                case 'grunt': healthColor = 0xff0000; break; // 红色
+                case 'soldier': healthColor = 0xff7700; break; // 橙色
+                case 'captain': healthColor = 0xff00ff; break; // 紫色
+            }
+            healthBar.fillStyle(healthColor, 1);
+            healthBar.fillRoundedRect(-20, -30, 40, 4, 1);
+            // 血量条高光
+            healthBar.fillStyle(0xffffff, 0.3);
+            healthBar.fillRoundedRect(-20, -30, 40, 2, 1);
             healthBar.setPosition(def.x, def.y);
             healthBar.setDepth(73);
+            
+            // 创建敌人类型标签（更明显的区分）
+            const typeLabels: { [key: string]: string } = {
+                'grunt': '普通',
+                'soldier': '精英',
+                'captain': 'BOSS'
+            };
+            const typeColors: { [key: string]: number } = {
+                'grunt': 0xff0000,
+                'soldier': 0xff7700,
+                'captain': 0xff00ff
+            };
+            const typeLabel = this.add.text(def.x, def.y - 45, typeLabels[def.type] || '敌人', {
+                font: 'bold 12px Arial',
+                color: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 3,
+                backgroundColor: `#${typeColors[def.type].toString(16).padStart(6, '0')}`,
+                padding: { x: 4, y: 2 }
+            });
+            typeLabel.setOrigin(0.5);
+            typeLabel.setDepth(74);
             
             // 创建敌人对象
             const enemy = {
@@ -6166,8 +6774,11 @@ export default class GameScene extends Phaser.Scene {
                 eyeGraphic,
                 healthBarBg,
                 healthBar,
+                typeLabel, // 添加类型标签
                 isHit: false,
-                hitTimer: 0
+                hitTimer: 0,
+                lastAttack: 0, // 初始化上次攻击时间
+                stateVisualTween: null as Phaser.Tweens.Tween | null // 状态视觉动画
             };
             
             // 与墙壁碰撞
@@ -6184,15 +6795,30 @@ export default class GameScene extends Phaser.Scene {
         }
     }
     
-    // 创建敌人眼睛
-    private createEnemyEyes(x: number, y: number, _color: number): Phaser.GameObjects.Graphics {
+    // 创建敌人眼睛（更威胁的设计）
+    private createEnemyEyes(x: number, y: number, color: number): Phaser.GameObjects.Graphics {
         const eyes = this.add.graphics();
+        
+        // 眼睛背景（发光的威胁感）
+        eyes.fillStyle(color, 0.4);
+        eyes.fillCircle(-5, -5, 5);
+        eyes.fillCircle(5, -5, 5);
+        
+        // 眼睛主体（更大更威胁）
         eyes.fillStyle(0x000000, 1);
-        eyes.fillCircle(-5, -5, 3);
-        eyes.fillCircle(5, -5, 3);
+        eyes.fillCircle(-5, -5, 4);
+        eyes.fillCircle(5, -5, 4);
+        
+        // 眼睛高光（更小更集中，增强威胁感）
         eyes.fillStyle(0xffffff, 1);
-        eyes.fillCircle(-6, -6, 1.5);
-        eyes.fillCircle(4, -6, 1.5);
+        eyes.fillCircle(-4, -6, 1.5);
+        eyes.fillCircle(6, -6, 1.5);
+        
+        // 眼睛发光效果
+        eyes.fillStyle(color, 0.6);
+        eyes.fillCircle(-5, -5, 2);
+        eyes.fillCircle(5, -5, 2);
+        
         eyes.setPosition(x, y);
         eyes.setDepth(71);
         return eyes;
@@ -6452,8 +7078,12 @@ export default class GameScene extends Phaser.Scene {
                         break;
                 }
                 
-                // 更新眼睛方向（看向玩家或移动方向）
-                this.updateEnemyEyes(enemy);
+                // 性能优化：减少眼睛更新频率（每3帧更新一次）
+                if (!(enemy as any).eyeUpdateCounter) (enemy as any).eyeUpdateCounter = 0;
+                (enemy as any).eyeUpdateCounter++;
+                if ((enemy as any).eyeUpdateCounter % 3 === 0) {
+                    this.updateEnemyEyes(enemy);
+                }
                 
                 // 更新敌人位置和图形
                 enemy.x = enemy.body.x;
@@ -6463,13 +7093,39 @@ export default class GameScene extends Phaser.Scene {
                     enemy.eyeGraphic.setPosition(enemy.x, enemy.y);
                 }
                 
-                // 更新血量条位置
+                // 更新血量条位置和血量显示
                 if (enemy.healthBarBg) {
                     enemy.healthBarBg.setPosition(enemy.x, enemy.y);
                 }
                 if (enemy.healthBar) {
                     enemy.healthBar.setPosition(enemy.x, enemy.y);
+                    // 性能优化：减少血量条重绘频率（每5帧更新一次）
+                    if (!(enemy as any).healthUpdateCounter) (enemy as any).healthUpdateCounter = 0;
+                    (enemy as any).healthUpdateCounter++;
+                    if ((enemy as any).healthUpdateCounter % 5 === 0) {
+                        // 更新血量条长度（根据当前血量）
+                        const healthPercent = enemy.health / enemy.maxHealth;
+                        enemy.healthBar.clear();
+                        let healthColor = 0xff0000;
+                        switch (enemy.type) {
+                            case 'grunt': healthColor = 0xff0000; break;
+                            case 'soldier': healthColor = 0xff7700; break;
+                            case 'captain': healthColor = 0xff00ff; break;
+                        }
+                        enemy.healthBar.fillStyle(healthColor, 1);
+                        enemy.healthBar.fillRoundedRect(-20, -30, 40 * healthPercent, 4, 1);
+                        enemy.healthBar.fillStyle(0xffffff, 0.3);
+                        enemy.healthBar.fillRoundedRect(-20, -30, 40 * healthPercent, 2, 1);
+                    }
                 }
+                
+                // 更新类型标签位置
+                if (enemy.typeLabel) {
+                    enemy.typeLabel.setPosition(enemy.x, enemy.y - 45);
+                }
+                
+                // 添加状态视觉反馈（根据敌人状态改变外观）
+                this.updateEnemyStateVisual(enemy);
             });
             
         } catch (error) {
@@ -6530,8 +7186,10 @@ export default class GameScene extends Phaser.Scene {
             // 到达目标点，移动到下一个点
             enemy.patrolIndex = (enemy.patrolIndex + 1) % enemy.patrolPath.length;
         } else {
-            // 向当前目标点移动
-            this.physics.moveTo(enemy.body, currentTarget.x, currentTarget.y, enemy.speed * 0.8);
+            // 向当前目标点移动（直接设置速度向量）
+            const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, currentTarget.x, currentTarget.y);
+            const speed = enemy.speed * 0.8;
+            enemy.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
         }
         
         // 添加一些随机性让巡逻看起来更自然
@@ -6561,11 +7219,12 @@ export default class GameScene extends Phaser.Scene {
             return;
         }
         
-        // 根据敌人类型调整追逐策略
+        // 根据敌人类型调整追逐策略（直接设置速度向量）
         switch (enemy.type) {
             case 'grunt':
                 // 直接追逐
-                this.physics.moveToObject(enemy.body, this.playerBody, enemy.speed);
+                const angle1 = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
+                enemy.body.setVelocity(Math.cos(angle1) * enemy.speed, Math.sin(angle1) * enemy.speed);
                 break;
             
             case 'soldier':
@@ -6574,16 +7233,20 @@ export default class GameScene extends Phaser.Scene {
                 const playerVelocity = this.playerBody.body?.velocity || { x: 0, y: 0 };
                 const predictedX = this.playerBody.x + playerVelocity.x * leadTime;
                 const predictedY = this.playerBody.y + playerVelocity.y * leadTime;
-                this.physics.moveTo(enemy.body, predictedX, predictedY, enemy.speed * 1.1);
+                const angle2 = Phaser.Math.Angle.Between(enemy.x, enemy.y, predictedX, predictedY);
+                const speed2 = enemy.speed * 1.1;
+                enemy.body.setVelocity(Math.cos(angle2) * speed2, Math.sin(angle2) * speed2);
                 break;
             
             case 'captain':
                 // 战略性追逐 - 尝试包抄
-                const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
+                const angle3 = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
                 const offsetAngle = (Math.random() - 0.5) * Math.PI / 3; // 随机偏移角度
-                const targetX = this.playerBody.x + Math.cos(angle + offsetAngle) * 100;
-                const targetY = this.playerBody.y + Math.sin(angle + offsetAngle) * 100;
-                this.physics.moveTo(enemy.body, targetX, targetY, enemy.speed * 1.2);
+                const targetX = this.playerBody.x + Math.cos(angle3 + offsetAngle) * 100;
+                const targetY = this.playerBody.y + Math.sin(angle3 + offsetAngle) * 100;
+                const angle4 = Phaser.Math.Angle.Between(enemy.x, enemy.y, targetX, targetY);
+                const speed4 = enemy.speed * 1.2;
+                enemy.body.setVelocity(Math.cos(angle4) * speed4, Math.sin(angle4) * speed4);
                 break;
         }
     }
@@ -6634,39 +7297,99 @@ export default class GameScene extends Phaser.Scene {
         }
     }
     
+    // 更新敌人状态视觉反馈
+    private updateEnemyStateVisual(enemy: any) {
+        if (!enemy || !enemy.graphic) return;
+        
+        // 停止之前的动画
+        if (enemy.stateVisualTween) {
+            enemy.stateVisualTween.stop();
+            enemy.stateVisualTween = null;
+        }
+        
+        // 根据状态设置不同的视觉效果
+        switch (enemy.state) {
+            case 'patrol':
+                // 巡逻状态：正常外观
+                enemy.graphic.setTint(0xffffff);
+                enemy.graphic.setScale(1.0);
+                break;
+                
+            case 'chase':
+                // 追逐状态：红色闪烁，稍微放大
+                enemy.graphic.setTint(0xffaaaa);
+                enemy.graphic.setScale(1.05);
+                enemy.stateVisualTween = this.tweens.add({
+                    targets: enemy.graphic,
+                    alpha: [0.9, 1.0, 0.9],
+                    duration: 300,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut'
+                });
+                break;
+                
+            case 'attack':
+                // 攻击状态：强烈红色闪烁，明显放大
+                enemy.graphic.setTint(0xff6666);
+                enemy.graphic.setScale(1.1);
+                enemy.stateVisualTween = this.tweens.add({
+                    targets: enemy.graphic,
+                    alpha: [0.8, 1.0, 0.8],
+                    scale: [1.1, 1.15, 1.1],
+                    duration: 200,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut'
+                });
+                break;
+        }
+    }
+    
+    // 获取敌人眼睛颜色
+    private getEnemyEyeColor(type: string): number {
+        switch (type) {
+            case 'grunt': return 0xff0000; // 红色
+            case 'soldier': return 0xff8c00; // 橙色
+            case 'captain': return 0x9900ff; // 紫色
+            default: return 0xff0000;
+        }
+    }
+    
     // 更新敌人眼睛方向
     private updateEnemyEyes(enemy: any) {
         if (!enemy || !enemy.eyeGraphic || !this.playerBody || !enemy.body) return;
         
         // 根据状态决定眼睛看的方向
+        const eyeColor = this.getEnemyEyeColor(enemy.type);
+        let angle: number;
+        const eyeOffset = 5;
+        
         if (enemy.state === 'chase' || enemy.state === 'attack') {
             // 看向玩家
-            const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
-            const eyeOffset = 5;
-            
-            // 清除并重新绘制眼睛
-            enemy.eyeGraphic.clear();
-            enemy.eyeGraphic.fillStyle(0x000000, 1);
-            enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 5, Math.sin(angle) * eyeOffset - 5, 3);
-            enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 5, Math.sin(angle) * eyeOffset - 5, 3);
-            enemy.eyeGraphic.fillStyle(0xffffff, 1);
-            enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 6, Math.sin(angle) * eyeOffset - 6, 1.5);
-            enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 4, Math.sin(angle) * eyeOffset - 6, 1.5);
+            angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
         } else {
             // 巡逻时眼睛看移动方向
             const enemyVelocity = enemy.body.velocity || { x: 0, y: 0 };
-            const angle = enemyVelocity.x === 0 && enemyVelocity.y === 0 ? 0 : Math.atan2(enemyVelocity.y, enemyVelocity.x);
-            const eyeOffset = 5;
-            
-            // 清除并重新绘制眼睛
-            enemy.eyeGraphic.clear();
-            enemy.eyeGraphic.fillStyle(0x000000, 1);
-            enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 5, Math.sin(angle) * eyeOffset - 5, 3);
-            enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 5, Math.sin(angle) * eyeOffset - 5, 3);
-            enemy.eyeGraphic.fillStyle(0xffffff, 1);
-            enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 6, Math.sin(angle) * eyeOffset - 6, 1.5);
-            enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 4, Math.sin(angle) * eyeOffset - 6, 1.5);
+            angle = enemyVelocity.x === 0 && enemyVelocity.y === 0 ? 0 : Math.atan2(enemyVelocity.y, enemyVelocity.x);
         }
+        
+        // 清除并重新绘制眼睛（使用新的威胁眼睛设计）
+        enemy.eyeGraphic.clear();
+        // 眼睛背景（发光的威胁感）
+        enemy.eyeGraphic.fillStyle(eyeColor, 0.4);
+        enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 5, Math.sin(angle) * eyeOffset - 5, 5);
+        enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 5, Math.sin(angle) * eyeOffset - 5, 5);
+        // 眼睛主体
+        enemy.eyeGraphic.fillStyle(0x000000, 1);
+        enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 5, Math.sin(angle) * eyeOffset - 5, 4);
+        enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 5, Math.sin(angle) * eyeOffset - 5, 4);
+        // 眼睛高光
+        enemy.eyeGraphic.fillStyle(0xffffff, 1);
+        enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 4, Math.sin(angle) * eyeOffset - 6, 1.5);
+        enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 6, Math.sin(angle) * eyeOffset - 6, 1.5);
+        // 眼睛发光效果
+        enemy.eyeGraphic.fillStyle(eyeColor, 0.6);
+        enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 5, Math.sin(angle) * eyeOffset - 5, 2);
+        enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 5, Math.sin(angle) * eyeOffset - 5, 2);
     }
     
     // 重置敌人颜色
@@ -6676,30 +7399,148 @@ export default class GameScene extends Phaser.Scene {
         // 清除现有图形
         enemy.graphic.clear();
         
-        // 根据敌人类型设置颜色和形状
+        // 根据敌人类型设置颜色和形状 - 与创建时保持一致的精美设计
         switch (enemy.type) {
             case 'grunt':
-                // 普通敌人 - 红色圆形
-                enemy.graphic.fillStyle(0xff3333, 1);
-                enemy.graphic.fillCircle(0, 0, 14);
+                // 普通敌人 - 红色威胁机器人设计（与创建时一致）
+                // 威胁外圈（红色警告环）
+                enemy.graphic.lineStyle(3, 0xff0000, 0.8);
+                enemy.graphic.strokeCircle(0, 0, 20);
+                
+                // 身体主体（更方更硬朗）
+                enemy.graphic.fillStyle(0xff4444, 1);
+                enemy.graphic.fillRect(-14, -10, 28, 20);
+                enemy.graphic.lineStyle(3, 0xcc0000, 1);
+                enemy.graphic.strokeRect(-14, -10, 28, 20);
+                
+                // 头部（更方更威胁）
+                enemy.graphic.fillStyle(0xff4444, 1);
+                enemy.graphic.fillRoundedRect(-12, -22, 24, 14, 2);
+                enemy.graphic.lineStyle(3, 0xcc0000, 1);
+                enemy.graphic.strokeRoundedRect(-12, -22, 24, 14, 2);
+                
+                // 头部顶部装饰（威胁标识）
+                enemy.graphic.fillStyle(0xcc0000, 1);
+                enemy.graphic.fillRect(-10, -24, 20, 3);
+                
+                // 身体高光（更暗，增强威胁感）
+                enemy.graphic.fillStyle(0xff6666, 1);
+                enemy.graphic.fillRect(-10, -8, 20, 10);
+                
+                // 身体装饰线条（警告条纹）
+                enemy.graphic.lineStyle(2, 0xcc0000, 1);
+                enemy.graphic.beginPath();
+                enemy.graphic.moveTo(-12, 0);
+                enemy.graphic.lineTo(12, 0);
+                enemy.graphic.strokePath();
+                
+                // 肩膀装甲（更突出）
+                enemy.graphic.fillStyle(0xcc0000, 1);
+                enemy.graphic.fillRect(-16, -8, 5, 10);
+                enemy.graphic.fillRect(11, -8, 5, 10);
                 enemy.graphic.lineStyle(2, 0x990000, 1);
-                enemy.graphic.strokeCircle(0, 0, 14);
+                enemy.graphic.strokeRect(-16, -8, 5, 10);
+                enemy.graphic.strokeRect(11, -8, 5, 10);
+                
+                // 腿部（更粗更稳定）
+                enemy.graphic.fillStyle(0xff4444, 1);
+                enemy.graphic.fillRect(-7, 10, 6, 10);
+                enemy.graphic.fillRect(1, 10, 6, 10);
+                enemy.graphic.lineStyle(2, 0xcc0000, 1);
+                enemy.graphic.strokeRect(-7, 10, 6, 10);
+                enemy.graphic.strokeRect(1, 10, 6, 10);
+                
+                // 外边框增强（更粗）
+                enemy.graphic.lineStyle(4, 0x990000, 1);
+                enemy.graphic.strokeRect(-14, -10, 28, 20);
                 break;
                 
             case 'soldier':
-                // 士兵 - 橙色六边形
-                enemy.graphic.fillStyle(0xff8c00, 1);
-                this.drawHexagon(enemy.graphic, 0, 0, 15);
+                // 士兵 - 橙色六边形精英机器人设计（与创建时一致）
+                // 威胁外圈（橙色警告环）
+                enemy.graphic.lineStyle(3, 0xff7700, 0.8);
+                enemy.graphic.strokeCircle(0, 0, 22);
+                
+                // 六边形主体（更大）
+                enemy.graphic.fillStyle(0xff7700, 1);
+                this.drawHexagon(enemy.graphic, 0, 0, 18);
+                enemy.graphic.lineStyle(4, 0xcc5500, 1);
+                this.drawHexagon(enemy.graphic, 0, 0, 18);
+                
+                // 内层六边形（装甲层）
+                enemy.graphic.fillStyle(0xffaa33, 1);
+                this.drawHexagon(enemy.graphic, 0, 0, 14);
                 enemy.graphic.lineStyle(2, 0xcc6600, 1);
-                this.drawHexagon(enemy.graphic, 0, 0, 15);
+                this.drawHexagon(enemy.graphic, 0, 0, 14);
+                
+                // 中心能量核心（更明显）
+                enemy.graphic.fillStyle(0xffffff, 1);
+                enemy.graphic.fillCircle(0, 0, 7);
+                enemy.graphic.fillStyle(0xff7700, 1);
+                enemy.graphic.fillCircle(0, 0, 5);
+                enemy.graphic.fillStyle(0xffcc66, 1);
+                enemy.graphic.fillCircle(0, 0, 3);
+                
+                // 装饰角（更突出，像武器）
+                for (let i = 0; i < 6; i++) {
+                    const angle = (Math.PI / 3) * i;
+                    const x = Math.cos(angle) * 16;
+                    const y = Math.sin(angle) * 16;
+                    enemy.graphic.fillStyle(0xcc5500, 1);
+                    enemy.graphic.fillCircle(x, y, 4);
+                    enemy.graphic.lineStyle(1, 0x993300, 1);
+                    enemy.graphic.strokeCircle(x, y, 4);
+                }
+                
+                // 外边框（更粗）
+                enemy.graphic.lineStyle(3, 0xcc5500, 1);
+                this.drawHexagon(enemy.graphic, 0, 0, 18);
                 break;
                 
             case 'captain':
-                // 队长 - 紫色星形
-                enemy.graphic.fillStyle(0x9933ff, 1);
-                this.drawStar(enemy.graphic, 0, 0, 12, 18);
-                enemy.graphic.lineStyle(2, 0x6600cc, 1);
-                this.drawStar(enemy.graphic, 0, 0, 12, 18);
+                // 队长 - 紫色星形BOSS机器人（与创建时一致）
+                // 多重威胁外圈（紫色能量环）
+                enemy.graphic.lineStyle(3, 0xff00ff, 0.6);
+                enemy.graphic.strokeCircle(0, 0, 28);
+                enemy.graphic.lineStyle(2, 0x9900ff, 0.8);
+                enemy.graphic.strokeCircle(0, 0, 24);
+                
+                // 星形主体（更大更威胁）
+                enemy.graphic.fillStyle(0x9900ff, 1);
+                this.drawStar(enemy.graphic, 0, 0, 22, 14);
+                enemy.graphic.lineStyle(4, 0x6600cc, 1);
+                this.drawStar(enemy.graphic, 0, 0, 22, 14);
+                
+                // 内层星形（装甲层）
+                enemy.graphic.fillStyle(0xbb66ff, 1);
+                this.drawStar(enemy.graphic, 0, 0, 18, 11);
+                enemy.graphic.lineStyle(2, 0x8800dd, 1);
+                this.drawStar(enemy.graphic, 0, 0, 18, 11);
+                
+                // 中心能量核心（最强能量）
+                enemy.graphic.fillStyle(0xffffff, 1);
+                enemy.graphic.fillCircle(0, 0, 9);
+                enemy.graphic.fillStyle(0x9900ff, 1);
+                enemy.graphic.fillCircle(0, 0, 7);
+                enemy.graphic.fillStyle(0xf4d03f, 1);
+                enemy.graphic.fillCircle(0, 0, 5);
+                enemy.graphic.fillStyle(0xffffff, 0.8);
+                enemy.graphic.fillCircle(0, 0, 3);
+                
+                // 星形装饰点（能量武器）
+                for (let i = 0; i < 10; i++) {
+                    const angle = (Math.PI / 5) * i;
+                    const x = Math.cos(angle) * 20;
+                    const y = Math.sin(angle) * 20;
+                    enemy.graphic.fillStyle(0xf4d03f, 1);
+                    enemy.graphic.fillCircle(x, y, 3);
+                    enemy.graphic.lineStyle(1, 0xffaa00, 1);
+                    enemy.graphic.strokeCircle(x, y, 3);
+                }
+                
+                // 外边框增强（更粗更明显）
+                enemy.graphic.lineStyle(3, 0x6600cc, 1);
+                this.drawStar(enemy.graphic, 0, 0, 22, 14);
                 break;
         }
     }
@@ -6721,6 +7562,23 @@ export default class GameScene extends Phaser.Scene {
                 if (dist < 25) { // 收集距离
                     // 收集物品
                     this.collectItem(item);
+                    
+                    // 清理额外图形对象（如弹药数量徽章）
+                    if ((item as any).extraGraphic) {
+                        const extraGraphics = Array.isArray((item as any).extraGraphic) 
+                            ? (item as any).extraGraphic 
+                            : [(item as any).extraGraphic];
+                        extraGraphics.forEach((extra: any) => {
+                            if (extra && typeof extra.destroy === 'function') {
+                                extra.destroy();
+                            }
+                        });
+                    }
+                    
+                    // 移除发光效果
+                    if (item.glowGraphic) {
+                        item.glowGraphic.destroy();
+                    }
                     
                     // 移除图形和物理体
                     item.graphic.destroy();
@@ -7327,11 +8185,12 @@ export default class GameScene extends Phaser.Scene {
         }
     }
     
-    // 玩家撤离
-    private evacuatePlayer() {
+    // 完成撤离
+    private completeEvacuation() {
         try {
             this.gameStarted = false;
             this.evacuationAvailable = false;
+            this.physics.pause();
             this.stopBackgroundMusic();
             this.playEvacuationSound();
             
@@ -7341,28 +8200,140 @@ export default class GameScene extends Phaser.Scene {
                 this.cameras.main.height / 2,
                 '撤离成功！',
                 {
-                    fontSize: '48px',
+                    fontSize: '64px',
                     color: '#00ff00',
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    padding: { x: 20, y: 15 }
+                    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                    padding: { x: 40, y: 30 },
+                    stroke: '#ffffff',
+                    strokeThickness: 4
                 }
             );
             evacText.setOrigin(0.5);
             evacText.setScrollFactor(0);
+            evacText.setDepth(5000);
             
-            this.tweens.add({
-                targets: evacText,
-                alpha: { from: 1, to: 0 },
-                duration: 3000,
-                onComplete: () => {
-                    evacText.destroy();
-                    this.scene.restart();
+            // 2秒后跳转到仓库场景
+            this.time.delayedCall(2000, () => {
+                evacText.destroy();
+                // 将背包物品转换为仓库格式
+                const warehouseItems = this.convertBackpackToWarehouseItems();
+                
+                // 保存玩家金钱到本地存储（确保持久化）
+                try {
+                    localStorage.setItem('player_money', this.playerMoney.toString());
+                    console.log(`保存玩家金钱: $${this.playerMoney}`);
+                } catch (error) {
+                    console.warn('无法保存玩家金钱:', error);
                 }
+                
+                // 跳转到仓库场景，传递背包数据和玩家数据
+                this.scene.start('WarehouseScene', {
+                    playerHealth: this.playerHealth,
+                    playerMoney: this.playerMoney,
+                    backpackItems: warehouseItems,
+                    fromEvacuation: true
+                });
             });
             
         } catch (error) {
-            console.error('玩家撤离时出错:', error);
+            console.error('完成撤离时出错:', error);
         }
+    }
+    
+    // 将背包物品转换为仓库物品格式
+    private convertBackpackToWarehouseItems(): any[] {
+        const warehouseItems: any[] = [];
+        
+        // 按类型分组背包物品
+        const itemMap = new Map<string, any>();
+        
+        this.playerBackpack.forEach(item => {
+            const key = item.name || item.type;
+            if (itemMap.has(key)) {
+                // 如果已存在，增加数量
+                const existing = itemMap.get(key);
+                existing.quantity = (existing.quantity || 1) + (item.quantity || 1);
+            } else {
+                // 创建新的仓库物品
+                const warehouseItem = {
+                    id: Date.now() + Math.random(), // 生成唯一ID
+                    type: this.mapItemTypeToWarehouseType(item.type),
+                    name: item.name || this.getItemNameByType(item.type),
+                    value: item.value || this.getItemDefaultValue(item.type),
+                    quantity: item.quantity || 1,
+                    description: this.getItemDescription(item.type)
+                };
+                itemMap.set(key, warehouseItem);
+            }
+        });
+        
+        // 转换为数组
+        itemMap.forEach(item => {
+            warehouseItems.push(item);
+        });
+        
+        return warehouseItems;
+    }
+    
+    // 映射物品类型到仓库类型
+    private mapItemTypeToWarehouseType(type: string): string {
+        const typeMap: { [key: string]: string } = {
+            'weapon': 'WEAPON',
+            'ammo': 'AMMO',
+            'armor': 'ARMOR',
+            'medical': 'MEDICAL',
+            'artifact': 'VALUABLE',
+            'money': 'VALUABLE',
+            'resource': 'VALUABLE'
+        };
+        return typeMap[type] || 'VALUABLE';
+    }
+    
+    // 根据类型获取物品名称
+    private getItemNameByType(type: string): string {
+        const nameMap: { [key: string]: string } = {
+            'weapon': '武器',
+            'ammo': '弹药',
+            'armor': '护甲',
+            'medical': '医疗用品',
+            'artifact': '工艺品',
+            'money': '现金',
+            'resource': '资源'
+        };
+        return nameMap[type] || '未知物品';
+    }
+    
+    // 根据类型获取默认价值
+    private getItemDefaultValue(type: string): number {
+        const valueMap: { [key: string]: number } = {
+            'weapon': 500,
+            'ammo': 50,
+            'armor': 300,
+            'medical': 200,
+            'artifact': 1000,
+            'money': 100,
+            'resource': 50
+        };
+        return valueMap[type] || 100;
+    }
+    
+    // 根据类型获取描述
+    private getItemDescription(type: string): string {
+        const descMap: { [key: string]: string } = {
+            'weapon': '战斗武器',
+            'ammo': '弹药补给',
+            'armor': '防护装备',
+            'medical': '医疗用品',
+            'artifact': '贵重物品',
+            'money': '现金',
+            'resource': '资源材料'
+        };
+        return descMap[type] || '物品';
+    }
+    
+    // 玩家撤离（保留旧方法以兼容）
+    private evacuatePlayer() {
+        this.completeEvacuation();
     }
 
     
@@ -7637,7 +8608,7 @@ export default class GameScene extends Phaser.Scene {
         this.inventoryPanel.add(healthBar);
     }
     
-    // 创建物品面板 - 支持交互
+    // 创建物品面板 - 网格布局（类似仓库）
     private createItemsPanel(x: number, y: number) {
         if (!this.inventoryPanel) return;
         
@@ -7651,7 +8622,7 @@ export default class GameScene extends Phaser.Scene {
         this.inventoryPanel.add(titleBg);
         
         // 物品区标题
-        const itemsTitle = this.add.text(x + 225, y - 22, '📦 背包物品', {
+        const itemsTitle = this.add.text(x + 225, y - 22, `📦 背包物品 (${this.playerBackpack.length}/12)`, {
             fontSize: '20px',
             color: '#f39c12',
             fontStyle: 'bold',
@@ -7662,7 +8633,7 @@ export default class GameScene extends Phaser.Scene {
         itemsTitle.setScrollFactor(0);
         this.inventoryPanel.add(itemsTitle);
         
-        // 物品列表背景 - 更精致
+        // 物品网格背景 - 更精致
         const itemsBg = this.add.graphics();
         // 外层发光
         itemsBg.fillStyle(0x3498db, 0.1);
@@ -7679,19 +8650,67 @@ export default class GameScene extends Phaser.Scene {
         itemsBg.setScrollFactor(0);
         this.inventoryPanel.add(itemsBg);
         
-        // 显示背包物品
-        let yOffset = y + 20;
+        // 网格布局参数
+        const slotsPerRow = 4; // 每行4个物品槽
+        const slotSize = 85;
+        const slotSpacing = 12;
+        const startX = x + 25;
+        const startY = y + 70;
+        const maxSlots = 12;
         
+        // 创建物品槽位网格
+        for (let i = 0; i < maxSlots; i++) {
+            const row = Math.floor(i / slotsPerRow);
+            const col = i % slotsPerRow;
+            
+            const slotX = startX + col * (slotSize + slotSpacing);
+            const slotY = startY + row * (slotSize + slotSpacing);
+            
+            // 创建物品槽
+            const slot = this.add.graphics();
+            slot.fillStyle(0x2c3e50, 0.8);
+            slot.fillRoundedRect(slotX, slotY, slotSize, slotSize, 8);
+            slot.lineStyle(2, 0x3498db, 0.6);
+            slot.strokeRoundedRect(slotX, slotY, slotSize, slotSize, 8);
+            slot.setScrollFactor(0);
+            slot.setInteractive(new Phaser.Geom.Rectangle(slotX, slotY, slotSize, slotSize), Phaser.Geom.Rectangle.Contains);
+            
+            // 槽位交互效果
+            slot.on('pointerover', () => {
+                slot.clear();
+                slot.fillStyle(0x2c3e50, 0.8);
+                slot.fillRoundedRect(slotX, slotY, slotSize, slotSize, 8);
+                slot.lineStyle(3, 0xf39c12);
+                slot.strokeRoundedRect(slotX, slotY, slotSize, slotSize, 8);
+            });
+            
+            slot.on('pointerout', () => {
+                slot.clear();
+                slot.fillStyle(0x2c3e50, 0.8);
+                slot.fillRoundedRect(slotX, slotY, slotSize, slotSize, 8);
+                slot.lineStyle(2, 0x3498db, 0.6);
+                slot.strokeRoundedRect(slotX, slotY, slotSize, slotSize, 8);
+            });
+            
+            this.inventoryPanel.add(slot);
+            
+            // 如果槽位有物品，显示物品
+            if (i < this.playerBackpack.length) {
+                const item = this.playerBackpack[i];
+                this.createBackpackItemInSlot(slotX + slotSize / 2, slotY + slotSize / 2, item, i);
+            }
+        }
+        
+        // 如果背包为空，显示提示
         if (this.playerBackpack.length === 0) {
-            // 空背包提示 - 更精致
-            const emptyIcon = this.add.text(x + 225, y + 180, '📭', {
+            const emptyIcon = this.add.text(x + 225, y + 200, '📭', {
                 fontSize: '48px'
             });
             emptyIcon.setOrigin(0.5);
             emptyIcon.setScrollFactor(0);
             this.inventoryPanel.add(emptyIcon);
             
-            const emptyText = this.add.text(x + 225, y + 230, '背包空空如也', {
+            const emptyText = this.add.text(x + 225, y + 250, '背包空空如也', {
                 fontSize: '18px',
                 color: '#7f8c8d',
                 stroke: '#000000',
@@ -7700,91 +8719,91 @@ export default class GameScene extends Phaser.Scene {
             emptyText.setOrigin(0.5);
             emptyText.setScrollFactor(0);
             this.inventoryPanel.add(emptyText);
-        } else {
-            // 按类型分组显示
-            const itemsByType: {[key: string]: GameItem[]} = {};
-            this.playerBackpack.forEach(item => {
-                const type = item.type;
-                if (!itemsByType[type]) {
-                    itemsByType[type] = [];
-                }
-                itemsByType[type].push(item);
-            });
-            
-            // 显示各类型物品（添加交互）
-            Object.keys(itemsByType).forEach((type, index) => {
-                if (yOffset > y + 360) return;
-                
-                const items = itemsByType[type];
-                const typeName = this.getItemTypeName(type);
-                
-                // 类型标题
-                const typeTitle = this.add.text(x + 20, yOffset, `${typeName} (${items.length})`, {
-                    fontSize: '16px',
-                    color: '#ffaa00',
-                    fontStyle: 'bold',
-                    stroke: '#000000',
-                    strokeThickness: 2
-                });
-                typeTitle.setScrollFactor(0);
-                if (this.inventoryPanel) this.inventoryPanel.add(typeTitle);
-                yOffset += 25;
-                
-                // 显示该类型的物品（添加交互）
-                items.slice(0, 3).forEach(item => {
-                    if (yOffset > y + 360) return;
-                    
-                    let itemText = `  • ${item.name || type}`;
-                    if (item.quantity) {
-                        itemText += ` x${item.quantity}`;
-                    }
-                    if (item.value) {
-                        itemText += ` ($${item.value})`;
-                    }
-                    
-                    // 创建可点击的物品标签
-                    const itemLabel = this.add.text(x + 30, yOffset, itemText, {
-                        fontSize: '14px',
-                        color: '#cccccc',
-                        stroke: '#000000',
-                        strokeThickness: 2
-                    });
-                    itemLabel.setScrollFactor(0);
-                    
-                    // 添加交互
-                    const hitArea = new Phaser.Geom.Rectangle(0, 0, 400, 20);
-                    itemLabel.setInteractive(hitArea, Phaser.Geom.Rectangle.Contains);
-                    itemLabel.on('pointerover', () => {
-                        itemLabel.setColor('#ffffff');
-                        itemLabel.setStyle({ backgroundColor: 'rgba(52, 152, 219, 0.3)' });
-                        this.input.setDefaultCursor('pointer');
-                    });
-                    itemLabel.on('pointerout', () => {
-                        itemLabel.setColor('#cccccc');
-                        itemLabel.setStyle({ backgroundColor: 'transparent' });
-                        this.input.setDefaultCursor('default');
-                    });
-                    itemLabel.on('pointerdown', () => {
-                        this.showItemDetails(item, x + 250, yOffset);
-                    });
-                    
-                    if (this.inventoryPanel) this.inventoryPanel.add(itemLabel);
-                    yOffset += 22;
-                });
-                
-                if (items.length > 3) {
-                    const moreText = this.add.text(x + 30, yOffset, `  ... 还有 ${items.length - 3} 个`, {
-                        fontSize: '12px',
-                        color: '#888888'
-                    });
-                    moreText.setScrollFactor(0);
-                    if (this.inventoryPanel) this.inventoryPanel.add(moreText);
-                    yOffset += 22;
-                }
-                
-                yOffset += 10;
-            });
         }
+    }
+    
+    // 在背包槽位中创建物品
+    private createBackpackItemInSlot(centerX: number, centerY: number, item: GameItem, _slotIndex: number) {
+        if (!this.inventoryPanel) return;
+        
+        // 创建物品容器
+        const itemContainer = this.add.container(centerX, centerY);
+        itemContainer.setScrollFactor(0);
+        
+        // 获取物品颜色
+        const itemColor = this.getItemColorForType(item.type);
+        
+        // 创建物品图标
+        const itemIcon = this.add.graphics();
+        itemIcon.fillStyle(itemColor);
+        itemIcon.fillCircle(0, 0, 30);
+        itemIcon.lineStyle(2, 0xecf0f1);
+        itemIcon.strokeCircle(0, 0, 30);
+        
+        // 物品名称（简化显示）
+        const itemName = item.name || this.getItemTypeName(item.type);
+        const itemText = this.add.text(0, -25, itemName.length > 6 ? itemName.substring(0, 6) + '...' : itemName, {
+            font: 'bold 10px Arial',
+            color: '#ffffff',
+            stroke: '#2c3e50',
+            strokeThickness: 1
+        });
+        itemText.setOrigin(0.5);
+        
+        // 物品数量
+        const quantityText = this.add.text(0, 0, `${item.quantity || 1}`, {
+            font: 'bold 16px Arial',
+            color: '#f39c12',
+            stroke: '#2c3e50',
+            strokeThickness: 2
+        });
+        quantityText.setOrigin(0.5);
+        
+        // 物品价值
+        const valueText = this.add.text(0, 25, `$${item.value || 0}`, {
+            font: 'bold 10px Arial',
+            color: '#2ecc71',
+            stroke: '#2c3e50',
+            strokeThickness: 1
+        });
+        valueText.setOrigin(0.5);
+        
+        // 将所有元素添加到容器
+        itemContainer.add([itemIcon, itemText, quantityText, valueText]);
+        itemContainer.setInteractive(new Phaser.Geom.Circle(0, 0, 35), Phaser.Geom.Circle.Contains);
+        
+        // 悬停效果
+        itemContainer.on('pointerover', () => {
+            itemContainer.setScale(1.15);
+            this.input.setDefaultCursor('pointer');
+            // 显示详细信息
+            this.showItemDetails(item, centerX + 50, centerY);
+        });
+        
+        itemContainer.on('pointerout', () => {
+            itemContainer.setScale(1);
+            this.input.setDefaultCursor('default');
+        });
+        
+        itemContainer.on('pointerdown', () => {
+            this.showItemDetails(item, centerX + 50, centerY);
+        });
+        
+        this.inventoryPanel.add(itemContainer);
+    }
+    
+    // 获取物品类型对应的颜色
+    private getItemColorForType(type: string): number {
+        const colorMap: { [key: string]: number } = {
+            'weapon': 0xe74c3c,    // 红色
+            'ammo': 0xf39c12,      // 橙色
+            'armor': 0x3498db,     // 蓝色
+            'medical': 0x2ecc71,   // 绿色
+            'artifact': 0xf1c40f,  // 黄色
+            'money': 0x2ecc71,     // 绿色
+            'resource': 0x9b59b6   // 紫色
+        };
+        return colorMap[type] || 0x95a5a6; // 默认灰色
     }
     
     // 创建统计面板 - 美化版
@@ -8200,8 +9219,13 @@ export default class GameScene extends Phaser.Scene {
             // 更新撤离点倒计时
             this.evacuationPoints.forEach(evacPoint => {
                 if (evacPoint.active) {
-                    // 如果玩家在撤离点内且正在倒计时，更新倒计时（在checkEvacuationStatus中处理）
-                    // 这里只处理撤离点的随机失效事件
+                    // 如果正在倒计时，递减倒计时
+                    if (evacPoint.isCountdownActive && evacPoint.countdown !== undefined) {
+                        evacPoint.countdown -= delta / 1000; // delta是毫秒，转换为秒
+                        if (evacPoint.countdown < 0) {
+                            evacPoint.countdown = 0;
+                        }
+                    }
                     
                     // 随机事件：撤离点可能失效（0.5%概率每秒，只在玩家不在撤离点时）
                     if (!evacPoint.isCountdownActive && Math.random() < 0.005 * delta / 1000) {
@@ -8303,23 +9327,19 @@ export default class GameScene extends Phaser.Scene {
                         }
                     }
                     
-                    // 更新倒计时显示
+                    // 更新倒计时显示（在updateEvacuationPoints中处理递减）
                     if (evacPoint.countdown !== undefined && evacPoint.countdownText) {
-                        evacPoint.countdownText.setText(`撤离倒计时: ${Math.ceil(evacPoint.countdown)}秒`);
-                        evacPoint.countdownText.setPosition(
-                            evacPoint.x - this.cameras.main.scrollX,
-                            evacPoint.y - this.cameras.main.scrollY - 50
-                        );
-                        
-                        // 倒计时结束，可以撤离
-                        if (evacPoint.countdown <= 0) {
-                            this.evacuationText?.setText('可以撤离！按E键完成撤离');
-                            evacPoint.countdownText?.setText('可以撤离！');
-                            
-                            // 监听E键撤离
-                            this.input.keyboard?.once('keydown-E', () => {
-                                this.gameOver(true);
-                            });
+                        if (evacPoint.countdown > 0) {
+                            evacPoint.countdownText.setText(`撤离倒计时: ${Math.ceil(evacPoint.countdown)}秒`);
+                            evacPoint.countdownText.setPosition(
+                                evacPoint.x - this.cameras.main.scrollX,
+                                evacPoint.y - this.cameras.main.scrollY - 50
+                            );
+                            this.evacuationText?.setText(`正在撤离... ${Math.ceil(evacPoint.countdown)}秒`);
+                        } else {
+                            // 倒计时结束，自动撤离
+                            evacPoint.countdownText?.setText('撤离成功！');
+                            this.completeEvacuation();
                         }
                     }
                 } else {
