@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>搜打撤 - 生存掠夺游戏</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔫</text></svg>">
+    <meta name="description" content="搜打撤 - 一款紧张刺激的生存掠夺游戏，体验物资搜刮、战斗对抗和安全撤离的乐趣">
+    <meta name="keywords" content="搜打撤,生存游戏,掠夺游戏,Phaser游戏,HTML5游戏">
+    <meta name="author" content="FightMoney Game Team">
+    
+    <!-- 安全策略 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data:; connect-src 'self' ws: wss:">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex, nofollow">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+            font-family: 'Microsoft YaHei', 'Segoe UI', 'PingFang SC', sans-serif;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            position: relative;
+        }
+        
+        /* 背景动画效果 */
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(52, 152, 219, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(155, 89, 182, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(231, 76, 60, 0.05) 0%, transparent 50%);
+            animation: backgroundPulse 8s ease-in-out infinite;
+            z-index: -1;
+        }
+        
+        @keyframes backgroundPulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+        
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, rgba(26, 82, 118, 0.95), rgba(10, 30, 45, 0.98));
+            backdrop-filter: blur(15px);
+            z-index: 1000;
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+        
+        .loading-overlay.hidden {
+            opacity: 0;
+            transform: scale(1.1);
+            pointer-events: none;
+        }
+        
+        .loading-content {
+            text-align: center;
+            max-width: 600px;
+            padding: 3rem 2rem;
+            position: relative;
+        }
+        
+        /* 装饰性边框 */
+        .loading-content::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            right: -10px;
+            bottom: -10px;
+            border: 2px solid rgba(52, 152, 219, 0.3);
+            border-radius: 20px;
+            animation: borderGlow 3s ease-in-out infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes borderGlow {
+            0%, 100% { box-shadow: 0 0 20px rgba(52, 152, 219, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(52, 152, 219, 0.6); }
+        }
+        
+        .game-title {
+            font-size: 4rem;
+            font-weight: 900;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(45deg, #3498db, #9b59b6, #e74c3c, #f1c40f);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 30px rgba(52, 152, 219, 0.5);
+            animation: titleGlow 2s ease-in-out infinite alternate;
+            letter-spacing: 2px;
+        }
+        
+        @keyframes titleGlow {
+            0% { text-shadow: 0 0 20px rgba(52, 152, 219, 0.5); }
+            100% { text-shadow: 0 0 40px rgba(155, 89, 182, 0.7); }
+        }
+        
+        .game-subtitle {
+            font-size: 1.4rem;
+            color: #bdc3c7;
+            margin-bottom: 2rem;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
+        
+        .loading-text {
+            font-size: 1.3rem;
+            margin-bottom: 2.5rem;
+            color: #ecf0f1;
+            line-height: 1.6;
+            font-weight: 500;
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 3rem;
+        }
+        
+        .progress-container {
+            width: 350px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 0 auto 2rem;
+            position: relative;
+        }
+        
+        .progress-container::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            animation: progressShine 2s ease-in-out infinite;
+        }
+        
+        @keyframes progressShine {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #2ecc71, #f1c40f);
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .loading-status {
+            font-size: 1.1rem;
+            color: #95a5a6;
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+            min-height: 1.5rem;
+        }
+        
+        .game-tips {
+            font-size: 1rem;
+            color: #7f8c8d;
+            line-height: 1.5;
+            margin-bottom: 2rem;
+            font-style: italic;
+        }
+        
+        .game-features {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            color: #bdc3c7;
+        }
+        
+        .feature-icon {
+            font-size: 1.2rem;
+        }
+        
+        #game-canvas {
+            width: 100% !important;
+            height: 100% !important;
+            border: none;
+            box-shadow: none;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .game-title {
+                font-size: 2.8rem;
+                margin-bottom: 1.2rem;
+            }
+            
+            .game-subtitle {
+                font-size: 1.2rem;
+                margin-bottom: 1.5rem;
+            }
+            
+            .loading-text {
+                font-size: 1.1rem;
+                margin-bottom: 2rem;
+            }
+            
+            .progress-container {
+                width: 280px;
+            }
+            
+            .loading-content {
+                padding: 2rem 1.5rem;
+                max-width: 450px;
+            }
+            
+            .game-features {
+                gap: 1rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .game-title {
+                font-size: 2.2rem;
+                margin-bottom: 1rem;
+            }
+            
+            .game-subtitle {
+                font-size: 1rem;
+                margin-bottom: 1.2rem;
+            }
+            
+            .loading-text {
+                font-size: 0.9rem;
+                margin-bottom: 1.5rem;
+            }
+            
+            .progress-container {
+                width: 240px;
+            }
+            
+            .loading-content {
+                padding: 1.5rem 1rem;
+                max-width: 320px;
+            }
+            
+            .game-features {
+                flex-direction: column;
+                gap: 0.8rem;
+            }
+        }
+        
+        /* 加载动画 */
+        .loading-dots {
+            display: inline-block;
+            margin-left: 5px;
+        }
+        
+        .loading-dots::after {
+            content: '';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60% { content: '...'; }
+            80%, 100% { content: ''; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-content">
+                <h1 class="game-title">🔫 搜打撤</h1>
+                <p class="game-subtitle">生存掠夺游戏</p>
+                <p class="loading-text">物资搜刮 • 战斗对抗 • 安全撤离</p>
+                
+                <div class="progress-container">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                
+                <div class="loading-status" id="loadingStatus">正在初始化游戏引擎<span class="loading-dots"></span></div>
+                <p class="game-tips">正在加载游戏资源，请稍候片刻...</p>
+                
+                <div class="game-features">
+                    <div class="feature-item">
+                        <span class="feature-icon">⚔️</span>
+                        <span>多样化武器系统</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">📦</span>
+                        <span>丰富物品收集</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">🏆</span>
+                        <span>成就挑战系统</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 修复favicon.ico 404错误
+        if (!document.querySelector('link[rel="icon"]')) {
+            const favicon = document.createElement('link');
+            favicon.rel = 'icon';
+            favicon.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔫</text></svg>';
+            document.head.appendChild(favicon);
+        }
+        
+        // 获取DOM元素
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const progressBar = document.getElementById('progressBar');
+        const loadingStatus = document.getElementById('loadingStatus');
+        
+        // 初始化进度条
+        progressBar.style.width = '0%';
+        
+        // 模拟加载进度
+        let progress = 0;
+        const maxProgress = 100;
+        const progressInterval = setInterval(() => {
+            progress += Math.random() * 10;
+            if (progress >= maxProgress) {
+                progress = maxProgress;
+                clearInterval(progressInterval);
+            }
+            progressBar.style.width = progress + '%';
+            
+            // 更新状态文本
+            if (progress < 30) {
+                loadingStatus.innerHTML = '正在初始化游戏引擎<span class="loading-dots"></span>';
+            } else if (progress < 60) {
+                loadingStatus.innerHTML = '正在加载游戏资源<span class="loading-dots"></span>';
+            } else if (progress < 90) {
+                loadingStatus.innerHTML = '正在准备游戏场景<span class="loading-dots"></span>';
+            } else {
+                loadingStatus.innerHTML = '游戏即将开始<span class="loading-dots"></span>';
+            }
+        }, 200);
+        
+        // 监听Phaser游戏准备就绪事件
+        window.addEventListener('phaser-game-ready', function() {
+            console.log('Phaser游戏已启动，准备隐藏加载界面');
+            
+            // 确保进度条完成
+            progressBar.style.width = '100%';
+            loadingStatus.innerHTML = '游戏加载完成！';
+            
+            // 添加完成动画
+            setTimeout(() => {
+                loadingOverlay.classList.add('hidden');
+                setTimeout(() => {
+                    loadingOverlay.style.display = 'none';
+                    console.log('加载界面已隐藏');
+                }, 600);
+            }, 800);
+        });
+        
+        // 额外的8秒超时保险，确保游戏总能显示
+        setTimeout(() => {
+            if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) {
+                console.log('超时强制显示游戏');
+                loadingOverlay.classList.add('hidden');
+                setTimeout(() => {
+                    loadingOverlay.style.display = 'none';
+                }, 600);
+            }
+        }, 8000);
+        
+        // 全面防止浏览器扩展错误
+        (function() {
+            // 捕获所有可能的错误类型
+            const errorPatterns = [
+                'connection',
+                'videoInWhiteList', 
+                'runtime.lastError',
+                'Receiving end does not exist',
+                'Could not establish connection',
+                'content.js',
+                'chrome-extension',
+                'extension'
+            ];
+            
+            // 全局错误捕获
+            window.onerror = function(message) {
+                const messageStr = String(message || '');
+                if (errorPatterns.some(pattern => messageStr.includes(pattern))) {
+                    return true; // 完全阻止扩展错误
+                }
+                return false;
+            };
+            
+            // Promise错误捕获
+            window.addEventListener('unhandledrejection', function(e) {
+                const reasonStr = String(e.reason || '');
+                if (errorPatterns.some(pattern => reasonStr.includes(pattern))) {
+                    e.preventDefault();
+                }
+            });
+            
+            // console.error处理
+            const originalConsoleError = console.error;
+            console.error = function(...args) {
+                const errorStr = args.join(' ');
+                if (errorPatterns.some(pattern => errorStr.includes(pattern))) {
+                    return; // 完全忽略扩展错误
+                }
+                originalConsoleError.apply(console, args);
+            };
+            
+            // Chrome扩展API安全处理
+            if (typeof chrome !== 'undefined') {
+                if (chrome.runtime) {
+                    chrome.runtime.sendMessage = function() {
+                        return Promise.resolve(); // 静默失败
+                    };
+                }
+                
+                ['tabs', 'storage', 'cookies'].forEach(apiName => {
+                    if (chrome[apiName] && typeof chrome[apiName] === 'object') {
+                        for (let key in chrome[apiName]) {
+                            if (typeof chrome[apiName][key] === 'function') {
+                                chrome[apiName][key] = function() { return Promise.resolve(); };
+                            }
+                        }
+                    }
+                });
+            }
+            
+            console.log('浏览器扩展错误防护已激活');
+        })();
+        
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('页面DOM加载完成');
+            
+            // 检查并移除可能的扩展注入脚本
+            const scripts = document.querySelectorAll('script[src*="content.js"], script[src*="chrome-extension"]');
+            scripts.forEach(script => {
+                if (script.parentNode) {
+                    script.parentNode.removeChild(script);
+                }
+            });
+        });
+    </script>
+    
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
