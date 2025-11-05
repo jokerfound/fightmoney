@@ -337,6 +337,16 @@ export default class GameScene extends Phaser.Scene {
             // 更新玩家移动
             this.updatePlayerMovement(clampedDelta);
             
+            // 同步玩家图形位置（每帧更新以确保跟随）
+            if (this.playerBody && this.player) {
+                this.playerX = this.playerBody.x;
+                this.playerY = this.playerBody.y;
+                this.player.setPosition(this.playerBody.x, this.playerBody.y);
+                if ((this as any).playerGlowGraphic) {
+                    (this as any).playerGlowGraphic.setPosition(this.playerBody.x, this.playerBody.y);
+                }
+            }
+            
             // 更新十字准星位置（使用世界坐标）
             if (this.crosshairGraphic) {
                 // 准星使用屏幕坐标
@@ -952,6 +962,12 @@ export default class GameScene extends Phaser.Scene {
                     // 添加一些补给箱
                     this.addSupplyCrate(roomX + 60, roomY + 60);
                     this.addSupplyCrate(roomX + roomW - 60, roomY + roomH - 60);
+                    // 添加战术桌子和椅子
+                    this.addTable(roomX + roomW/2, roomY + roomH - 80);
+                    this.addChair(roomX + roomW/2 - 40, roomY + roomH - 60);
+                    this.addChair(roomX + roomW/2 + 40, roomY + roomH - 60);
+                    // 添加一些装饰物
+                    this.addComputer(roomX + 100, roomY + 100);
                     break;
                     
                 case 'main':
@@ -965,6 +981,12 @@ export default class GameScene extends Phaser.Scene {
                     // 添加货架
                     this.addShelf(roomX + 100, roomY + 100);
                     this.addShelf(roomX + roomW - 100, roomY + 100);
+                    // 添加更多装饰：战术桌、控制台等
+                    this.addTable(roomX + roomW/2, roomY + roomH/2);
+                    this.addControlPanel(roomX + roomW/2, roomY + 80);
+                    // 添加一些箱子
+                    this.addStorageBox(roomX + 150, roomY + roomH - 60);
+                    this.addStorageBox(roomX + roomW - 150, roomY + roomH - 60);
                     break;
                     
                 case 'side':
@@ -977,17 +999,37 @@ export default class GameScene extends Phaser.Scene {
                             this.addShelf(shelfX, shelfY);
                         }
                     }
+                    // 添加更多储物箱
+                    for (let i = 0; i < 2; i++) {
+                        const boxX = roomX + 80 + (i * 120);
+                        const boxY = roomY + 100;
+                        if (boxX < roomX + roomW - 80) {
+                            this.addStorageBox(boxX, boxY);
+                        }
+                    }
+                    // 添加一些杂物
+                    this.addDebris(roomX + roomW/2, roomY + roomH/2);
                     break;
                     
                 case 'treasure':
                     // 添加多个宝箱
                     this.addTreasureChest(roomX + roomW/2 - 60, roomY + roomH/2);
                     this.addTreasureChest(roomX + roomW/2 + 60, roomY + roomH/2);
+                    // 添加装饰性柱子
+                    this.addColumn(roomX + 100, roomY + 100);
+                    this.addColumn(roomX + roomW - 100, roomY + 100);
+                    // 添加一些金币堆
+                    this.addCoinPile(roomX + roomW/2, roomY + roomH/2 - 50);
                     break;
                     
                 case 'evac':
                     // 添加撤离点标记和设备
                     this.addEvacuationEquipment(roomX + roomW/2, roomY + roomH/2);
+                    // 添加控制台
+                    this.addControlPanel(roomX + roomW/2, roomY + 100);
+                    // 添加一些设备箱
+                    this.addEquipmentBox(roomX + roomW/2 - 80, roomY + roomH - 60);
+                    this.addEquipmentBox(roomX + roomW/2 + 80, roomY + roomH - 60);
                     break;
             }
         });
@@ -1344,6 +1386,248 @@ export default class GameScene extends Phaser.Scene {
         // 添加物理碰撞
         const body = this.physics.add.sprite(x, y, '');
         body.setSize(40, 20);
+        body.setImmovable(true);
+        body.setDepth(52);
+    }
+    
+    // 添加桌子
+    private addTable(x: number, y: number) {
+        const table = this.add.graphics();
+        
+        // 桌子阴影
+        table.fillStyle(0x2a2a2a, 0.5);
+        table.fillEllipse(0, 15, 80, 20);
+        
+        // 桌面
+        table.fillStyle(0x654321, 1);
+        table.fillRect(-40, -10, 80, 20);
+        
+        // 桌面高光
+        table.fillStyle(0x8B4513, 0.8);
+        table.fillRect(-40, -10, 80, 8);
+        
+        // 桌腿
+        table.fillStyle(0x4a3a2a, 1);
+        table.fillRect(-35, 10, 8, 25);
+        table.fillRect(27, 10, 8, 25);
+        table.fillRect(-35, 10, 8, 25);
+        table.fillRect(27, 10, 8, 25);
+        
+        // 边框
+        table.lineStyle(2, 0x444444, 1);
+        table.strokeRect(-40, -10, 80, 20);
+        
+        table.setPosition(x, y);
+        table.setDepth(52);
+        
+        // 添加物理碰撞
+        const body = this.physics.add.sprite(x, y, '');
+        body.setSize(80, 20);
+        body.setImmovable(true);
+        body.setDepth(52);
+    }
+    
+    // 添加椅子
+    private addChair(x: number, y: number) {
+        const chair = this.add.graphics();
+        
+        // 椅子座面
+        chair.fillStyle(0x5D4037, 1);
+        chair.fillRect(-15, -5, 30, 8);
+        
+        // 椅子靠背
+        chair.fillStyle(0x6D4C41, 1);
+        chair.fillRect(-15, -18, 30, 13);
+        
+        // 椅子腿
+        chair.fillStyle(0x4a3a2a, 1);
+        chair.fillRect(-12, 3, 5, 20);
+        chair.fillRect(7, 3, 5, 20);
+        
+        // 边框
+        chair.lineStyle(1, 0x444444, 1);
+        chair.strokeRect(-15, -18, 30, 26);
+        
+        chair.setPosition(x, y);
+        chair.setDepth(52);
+        
+        // 添加物理碰撞
+        const body = this.physics.add.sprite(x, y, '');
+        body.setSize(30, 25);
+        body.setImmovable(true);
+        body.setDepth(52);
+    }
+    
+    // 添加电脑
+    private addComputer(x: number, y: number) {
+        const computer = this.add.graphics();
+        
+        // 显示器底座
+        computer.fillStyle(0x2c3e50, 1);
+        computer.fillRect(-20, 15, 40, 8);
+        
+        // 显示器支架
+        computer.fillStyle(0x34495e, 1);
+        computer.fillRect(-3, 8, 6, 10);
+        
+        // 显示器屏幕
+        computer.fillStyle(0x1a1a1a, 1);
+        computer.fillRect(-25, -20, 50, 28);
+        
+        // 屏幕高光
+        computer.fillStyle(0x2ecc71, 0.3);
+        computer.fillRect(-20, -15, 40, 18);
+        
+        // 屏幕边框
+        computer.lineStyle(2, 0x3498db, 1);
+        computer.strokeRect(-25, -20, 50, 28);
+        
+        // 键盘
+        computer.fillStyle(0x34495e, 1);
+        computer.fillRect(-30, 8, 60, 8);
+        
+        computer.setPosition(x, y);
+        computer.setDepth(52);
+        
+        // 添加物理碰撞
+        const body = this.physics.add.sprite(x, y, '');
+        body.setSize(60, 30);
+        body.setImmovable(true);
+        body.setDepth(52);
+    }
+    
+    // 添加控制面板
+    private addControlPanel(x: number, y: number) {
+        const panel = this.add.graphics();
+        
+        // 面板底座
+        panel.fillStyle(0x2c3e50, 1);
+        panel.fillRect(-35, -15, 70, 30);
+        
+        // 控制面板主体
+        panel.fillStyle(0x34495e, 1);
+        panel.fillRect(-30, -12, 60, 24);
+        
+        // 按钮
+        panel.fillStyle(0x2ecc71, 1);
+        panel.fillCircle(-15, -5, 4);
+        panel.fillCircle(0, -5, 4);
+        panel.fillCircle(15, -5, 4);
+        
+        // 指示灯
+        panel.fillStyle(0xe74c3c, 1);
+        panel.fillCircle(0, 5, 3);
+        
+        // 屏幕
+        panel.fillStyle(0x1a1a1a, 1);
+        panel.fillRect(-20, 0, 40, 8);
+        
+        // 边框
+        panel.lineStyle(2, 0x3498db, 1);
+        panel.strokeRect(-35, -15, 70, 30);
+        
+        panel.setPosition(x, y);
+        panel.setDepth(52);
+        
+        // 添加发光效果
+        const glow = this.add.graphics();
+        glow.fillStyle(0x3498db, 0.2);
+        glow.fillCircle(0, 0, 40);
+        glow.setPosition(x, y);
+        glow.setDepth(51);
+        
+        // 添加物理碰撞
+        const body = this.physics.add.sprite(x, y, '');
+        body.setSize(70, 30);
+        body.setImmovable(true);
+        body.setDepth(52);
+    }
+    
+    // 添加设备箱
+    private addEquipmentBox(x: number, y: number) {
+        const box = this.add.graphics();
+        
+        // 箱子阴影
+        box.fillStyle(0x2a2a2a, 0.6);
+        box.fillEllipse(0, 8, 55, 15);
+        
+        // 箱子主体
+        box.fillStyle(0x34495e, 1);
+        box.fillRect(-25, -18, 50, 36);
+        
+        // 顶部高光
+        box.fillStyle(0x3498db, 0.8);
+        box.fillRect(-25, -18, 50, 12);
+        
+        // 侧面阴影
+        box.fillStyle(0x2c3e50, 1);
+        box.fillRect(-25, -6, 10, 24);
+        
+        // 金属边框
+        box.lineStyle(2, 0x3498db, 1);
+        box.strokeRect(-25, -18, 50, 36);
+        
+        // 标签
+        box.fillStyle(0x2ecc71, 1);
+        box.fillRect(-15, -16, 30, 6);
+        
+        box.setPosition(x, y);
+        box.setDepth(52);
+        
+        // 添加物理碰撞
+        const body = this.physics.add.sprite(x, y, '');
+        body.setSize(50, 36);
+        body.setImmovable(true);
+        body.setDepth(52);
+    }
+    
+    // 添加金币堆
+    private addCoinPile(x: number, y: number) {
+        const coins = this.add.graphics();
+        
+        // 金币堆主体
+        coins.fillStyle(0xFFD700, 1);
+        coins.fillCircle(0, 0, 15);
+        coins.fillCircle(-8, 5, 10);
+        coins.fillCircle(8, 5, 10);
+        coins.fillCircle(-5, 10, 8);
+        coins.fillCircle(5, 10, 8);
+        
+        // 金币高光
+        coins.fillStyle(0xFFED4E, 1);
+        coins.fillCircle(-2, -2, 5);
+        coins.fillCircle(-8, 5, 4);
+        coins.fillCircle(8, 5, 4);
+        
+        // 金币边框
+        coins.lineStyle(1, 0xFFA500, 1);
+        coins.strokeCircle(0, 0, 15);
+        coins.strokeCircle(-8, 5, 10);
+        coins.strokeCircle(8, 5, 10);
+        
+        coins.setPosition(x, y);
+        coins.setDepth(52);
+        
+        // 添加发光效果
+        const glow = this.add.graphics();
+        glow.fillStyle(0xFFD700, 0.3);
+        glow.fillCircle(0, 0, 25);
+        glow.setPosition(x, y);
+        glow.setDepth(51);
+        
+        // 添加脉冲动画
+        this.tweens.add({
+            targets: glow,
+            alpha: [0.3, 0.6, 0.3],
+            scale: [1, 1.2, 1],
+            duration: 1500,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+        
+        // 添加物理碰撞
+        const body = this.physics.add.sprite(x, y, '');
+        body.setSize(30, 25);
         body.setImmovable(true);
         body.setDepth(52);
     }
@@ -2333,6 +2617,7 @@ export default class GameScene extends Phaser.Scene {
             this.playerBody.setCircle(15);
             this.playerBody.setCollideWorldBounds(true);
             this.playerBody.setDepth(100);
+            this.playerBody.setVisible(false); // 隐藏物理碰撞体的方块显示
             
             // playerBody创建后重新设置相机跟随
             // 延迟一帧确保物理体完全初始化
@@ -2347,13 +2632,8 @@ export default class GameScene extends Phaser.Scene {
             // 添加移动粒子效果
             this.createPlayerParticles();
             
-            // 将图形与物理体同步
-            this.playerBody.on('update', () => {
-                this.playerX = this.playerBody.x;
-                this.playerY = this.playerBody.y;
-                this.player.setPosition(this.playerBody.x, this.playerBody.y);
-                glowGraphic.setPosition(this.playerBody.x, this.playerBody.y);
-            });
+            // 存储发光图形引用以便后续更新
+            (this as any).playerGlowGraphic = glowGraphic;
             
             // 添加与墙壁的碰撞
             this.physics.add.collider(this.playerBody, this.walls);
@@ -3658,25 +3938,29 @@ export default class GameScene extends Phaser.Scene {
                 });
             }
             
-            // 找出所有在射程和角度范围内的敌人
-            const hitEnemies = this.enemies.filter(enemy => {
-                if (!enemy || !enemy.body) return false;
+            // 找出所有在射程和角度范围内的敌人，但只选择最近的敌人（避免多个敌人同时受伤）
+            const potentialEnemies = this.enemies.filter(enemy => {
+                if (!enemy || !enemy.body || enemy.health <= 0) return false;
+                
+                // 使用物理体的实际位置，而不是缓存的x/y
+                const enemyX = enemy.body.x;
+                const enemyY = enemy.body.y;
                 
                 // 计算距离
-                const enemyDist = Phaser.Math.Distance.Between(fromX, fromY, enemy.x, enemy.y);
+                const enemyDist = Phaser.Math.Distance.Between(fromX, fromY, enemyX, enemyY);
                 
                 // 检查是否在有效射程内
                 if (enemyDist > maxRange) return false;
                 
                 // 检查是否被墙壁阻挡
-                const hitWall = this.raycastHitWall(fromX, fromY, enemy.x, enemy.y);
+                const hitWall = this.raycastHitWall(fromX, fromY, enemyX, enemyY);
                 if (hitWall) {
                     const wallDist = Math.sqrt(Math.pow(hitWall.x - fromX, 2) + Math.pow(hitWall.y - fromY, 2));
                     if (wallDist < enemyDist) return false; // 被墙壁阻挡
                 }
                 
                 // 计算角度差 - 放宽命中判定
-                const enemyAngle = Phaser.Math.Angle.Between(fromX, fromY, enemy.x, enemy.y);
+                const enemyAngle = Phaser.Math.Angle.Between(fromX, fromY, enemyX, enemyY);
                 const angleDiff = Math.abs(Phaser.Math.Angle.ShortestBetween(angle, enemyAngle));
                 
                 // 放宽命中角度，将角度转换为度数并扩大容差
@@ -3684,10 +3968,19 @@ export default class GameScene extends Phaser.Scene {
                 return angleDiff < maxAngleDiff;
             });
             
-            // 对击中的敌人造成伤害
-            hitEnemies.forEach(enemy => {
-                this.damageEnemy(enemy, weapon.damage);
-            });
+            // 只对最近的敌人造成伤害（避免多个敌人同时受伤的问题）
+            if (potentialEnemies.length > 0) {
+                // 按距离排序，选择最近的敌人
+                potentialEnemies.sort((a, b) => {
+                    const distA = Phaser.Math.Distance.Between(fromX, fromY, a.body.x, a.body.y);
+                    const distB = Phaser.Math.Distance.Between(fromX, fromY, b.body.x, b.body.y);
+                    return distA - distB;
+                });
+                
+                // 只对最近的敌人造成伤害
+                const closestEnemy = potentialEnemies[0];
+                this.damageEnemy(closestEnemy, weapon.damage);
+            }
             
         } catch (error) {
             console.error('检查子弹击中时出错:', error);
@@ -6700,12 +6993,20 @@ export default class GameScene extends Phaser.Scene {
             body.setCircle(16);
             body.setDepth(70);
             body.setCollideWorldBounds(true);
+            body.setVisible(false); // 隐藏物理碰撞体的方块显示
             
             // 配置物理属性（确保敌人可以移动）
-            body.setMaxVelocity(def.speed);
-            body.setDrag(50);
+            body.setMaxVelocity(def.speed * 2); // 增加最大速度限制
+            body.setDrag(100); // 减少阻力，让移动更流畅
             body.setBounce(0); // 无反弹
             body.setImmovable(false); // 敌人可以移动
+            body.setPushable(true); // 可以被推动
+            body.setCollideWorldBounds(true); // 确保碰撞边界
+            if (body.body) {
+                (body.body as any).setAllowGravity(false); // 禁用重力（2D游戏）
+                // 确保物理体是可移动的
+                (body.body as any).setAllowRotation(false); // 禁用旋转
+            }
             
             // 创建血量条背景（更精美）
             const healthBarBg = this.add.graphics();
@@ -7025,8 +7326,12 @@ export default class GameScene extends Phaser.Scene {
             this.enemies.forEach(enemy => {
                 if (!enemy || !enemy.body || !this.playerBody) return;
                 
+                // 确保使用物理体的实际位置（而非缓存的x/y）
+                const enemyX = enemy.body.x;
+                const enemyY = enemy.body.y;
+                
                 const playerDist = Phaser.Math.Distance.Between(
-                    enemy.x, enemy.y,
+                    enemyX, enemyY,
                     this.playerBody.x, this.playerBody.y
                 );
                 
@@ -7082,7 +7387,7 @@ export default class GameScene extends Phaser.Scene {
                 if (!(enemy as any).eyeUpdateCounter) (enemy as any).eyeUpdateCounter = 0;
                 (enemy as any).eyeUpdateCounter++;
                 if ((enemy as any).eyeUpdateCounter % 3 === 0) {
-                    this.updateEnemyEyes(enemy);
+                this.updateEnemyEyes(enemy);
                 }
                 
                 // 更新敌人位置和图形
@@ -7165,8 +7470,19 @@ export default class GameScene extends Phaser.Scene {
     
     // 执行巡逻行为
     private executePatrolBehavior(enemy: any) {
+        if (!enemy || !enemy.body) return;
+        
         if (!enemy.patrolPath || enemy.patrolPath.length === 0) {
-            return;
+            // 如果没有巡逻路径，创建简单的原地巡逻
+            if (!enemy.patrolPath) {
+                enemy.patrolPath = [
+                    { x: enemy.x, y: enemy.y },
+                    { x: enemy.x + 50, y: enemy.y },
+                    { x: enemy.x + 50, y: enemy.y + 50 },
+                    { x: enemy.x, y: enemy.y + 50 }
+                ];
+                enemy.patrolIndex = 0;
+            }
         }
         
         // 确保patrolIndex在有效范围内
@@ -7180,34 +7496,35 @@ export default class GameScene extends Phaser.Scene {
             return;
         }
         
-        const distToTarget = Phaser.Math.Distance.Between(enemy.x, enemy.y, currentTarget.x, currentTarget.y);
+        // 使用物理体的实际位置
+        const enemyX = enemy.body.x;
+        const enemyY = enemy.body.y;
+        const distToTarget = Phaser.Math.Distance.Between(enemyX, enemyY, currentTarget.x, currentTarget.y);
         
-        if (distToTarget < 20) {
+        if (distToTarget < 30) {
             // 到达目标点，移动到下一个点
             enemy.patrolIndex = (enemy.patrolIndex + 1) % enemy.patrolPath.length;
         } else {
             // 向当前目标点移动（直接设置速度向量）
-            const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, currentTarget.x, currentTarget.y);
-            const speed = enemy.speed * 0.8;
-            enemy.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
-        }
-        
-        // 添加一些随机性让巡逻看起来更自然
-        if (Math.random() < 0.005) {
-            enemy.body.setVelocity(
-                enemy.body.velocity.x + (Math.random() - 0.5) * 20,
-                enemy.body.velocity.y + (Math.random() - 0.5) * 20
-            );
+            const angle = Phaser.Math.Angle.Between(enemyX, enemyY, currentTarget.x, currentTarget.y);
+            const speed = enemy.speed * 0.6; // 巡逻速度稍慢
+            if (enemy.body && enemy.body.body) {
+                enemy.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+            }
         }
     }
     
     // 执行追逐行为
     private executeChaseBehavior(enemy: any) {
-        if (!enemy || !enemy.body || !this.playerBody) return;
+        if (!enemy || !enemy.body || !this.playerBody || !enemy.body.body) return;
+        
+        // 使用物理体的实际位置
+        const enemyX = enemy.body.x;
+        const enemyY = enemy.body.y;
         
         // 检查是否已经到达攻击距离
         const playerDist = Phaser.Math.Distance.Between(
-            enemy.x, enemy.y,
+            enemyX, enemyY,
             this.playerBody.x, this.playerBody.y
         );
         const attackRange = this.getEnemyAttackRange(enemy.type || 'grunt');
@@ -7223,7 +7540,7 @@ export default class GameScene extends Phaser.Scene {
         switch (enemy.type) {
             case 'grunt':
                 // 直接追逐
-                const angle1 = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
+                const angle1 = Phaser.Math.Angle.Between(enemyX, enemyY, this.playerBody.x, this.playerBody.y);
                 enemy.body.setVelocity(Math.cos(angle1) * enemy.speed, Math.sin(angle1) * enemy.speed);
                 break;
             
@@ -7233,30 +7550,38 @@ export default class GameScene extends Phaser.Scene {
                 const playerVelocity = this.playerBody.body?.velocity || { x: 0, y: 0 };
                 const predictedX = this.playerBody.x + playerVelocity.x * leadTime;
                 const predictedY = this.playerBody.y + playerVelocity.y * leadTime;
-                const angle2 = Phaser.Math.Angle.Between(enemy.x, enemy.y, predictedX, predictedY);
+                const angle2 = Phaser.Math.Angle.Between(enemyX, enemyY, predictedX, predictedY);
                 const speed2 = enemy.speed * 1.1;
                 enemy.body.setVelocity(Math.cos(angle2) * speed2, Math.sin(angle2) * speed2);
                 break;
             
             case 'captain':
                 // 战略性追逐 - 尝试包抄
-                const angle3 = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
+                const angle3 = Phaser.Math.Angle.Between(enemyX, enemyY, this.playerBody.x, this.playerBody.y);
                 const offsetAngle = (Math.random() - 0.5) * Math.PI / 3; // 随机偏移角度
                 const targetX = this.playerBody.x + Math.cos(angle3 + offsetAngle) * 100;
                 const targetY = this.playerBody.y + Math.sin(angle3 + offsetAngle) * 100;
-                const angle4 = Phaser.Math.Angle.Between(enemy.x, enemy.y, targetX, targetY);
+                const angle4 = Phaser.Math.Angle.Between(enemyX, enemyY, targetX, targetY);
                 const speed4 = enemy.speed * 1.2;
                 enemy.body.setVelocity(Math.cos(angle4) * speed4, Math.sin(angle4) * speed4);
+                break;
+            
+            default:
+                // 默认追逐行为
+                const defaultAngle = Phaser.Math.Angle.Between(enemyX, enemyY, this.playerBody.x, this.playerBody.y);
+                enemy.body.setVelocity(Math.cos(defaultAngle) * enemy.speed, Math.sin(defaultAngle) * enemy.speed);
                 break;
         }
     }
     
     // 执行攻击行为 - 修改为射击攻击
     private executeAttackBehavior(enemy: any) {
-        if (!this.playerBody) return;
+        if (!this.playerBody || !enemy || !enemy.body) return;
         
         // 攻击时停下来（较真实的射击姿态）
-        enemy.body.setVelocity(0, 0);
+        if (enemy.body.body) {
+            enemy.body.setVelocity(0, 0);
+        }
         
         // 检查是否有视线
         const hasLineOfSight = this.checkEnemySight(enemy, this.playerBody);
@@ -7361,29 +7686,29 @@ export default class GameScene extends Phaser.Scene {
         // 根据状态决定眼睛看的方向
         const eyeColor = this.getEnemyEyeColor(enemy.type);
         let angle: number;
-        const eyeOffset = 5;
-        
+            const eyeOffset = 5;
+            
         if (enemy.state === 'chase' || enemy.state === 'attack') {
-            // 看向玩家
-            angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
+            // 看向玩家（使用物理体的实际位置）
+            angle = Phaser.Math.Angle.Between(enemy.body.x, enemy.body.y, this.playerBody.x, this.playerBody.y);
         } else {
             // 巡逻时眼睛看移动方向
             const enemyVelocity = enemy.body.velocity || { x: 0, y: 0 };
             angle = enemyVelocity.x === 0 && enemyVelocity.y === 0 ? 0 : Math.atan2(enemyVelocity.y, enemyVelocity.x);
         }
-        
+            
         // 清除并重新绘制眼睛（使用新的威胁眼睛设计）
-        enemy.eyeGraphic.clear();
+            enemy.eyeGraphic.clear();
         // 眼睛背景（发光的威胁感）
         enemy.eyeGraphic.fillStyle(eyeColor, 0.4);
         enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 5, Math.sin(angle) * eyeOffset - 5, 5);
         enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 5, Math.sin(angle) * eyeOffset - 5, 5);
         // 眼睛主体
-        enemy.eyeGraphic.fillStyle(0x000000, 1);
+            enemy.eyeGraphic.fillStyle(0x000000, 1);
         enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 5, Math.sin(angle) * eyeOffset - 5, 4);
         enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 5, Math.sin(angle) * eyeOffset - 5, 4);
         // 眼睛高光
-        enemy.eyeGraphic.fillStyle(0xffffff, 1);
+            enemy.eyeGraphic.fillStyle(0xffffff, 1);
         enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset - 4, Math.sin(angle) * eyeOffset - 6, 1.5);
         enemy.eyeGraphic.fillCircle(Math.cos(angle) * eyeOffset + 6, Math.sin(angle) * eyeOffset - 6, 1.5);
         // 眼睛发光效果
@@ -7890,23 +8215,20 @@ export default class GameScene extends Phaser.Scene {
             enemy.isHit = true;
             enemy.hitTimer = 20; // 帧数
             
-            // 变红效果
-            enemy.graphic.clear();
-            enemy.graphic.fillStyle(0xff0000, 1);
-            switch (enemy.type) {
-                case 'grunt':
-                    enemy.graphic.fillCircle(0, 0, 16);
-                    break;
-                case 'soldier':
-                    enemy.graphic.fillCircle(0, 0, 18);
-                    break;
-                case 'captain':
-                    enemy.graphic.fillCircle(0, 0, 20);
-                    break;
-            }
+            // 变红效果 - 使用tint而不是清除图形，避免破坏敌人外观
+            enemy.graphic.setTint(0xff0000);
+            
+            // 短暂变红后恢复
+            this.time.delayedCall(100, () => {
+                if (enemy && enemy.graphic) {
+                    enemy.graphic.clearTint();
+                }
+            });
             
             // 被击中击退效果
-            const angle = Phaser.Math.Angle.Between(this.playerBody.x, this.playerBody.y, enemy.x, enemy.y);
+            const enemyX = enemy.body.x;
+            const enemyY = enemy.body.y;
+            const angle = Phaser.Math.Angle.Between(this.playerBody.x, this.playerBody.y, enemyX, enemyY);
             enemy.body.setVelocity(
                 Math.cos(angle) * 50,
                 Math.sin(angle) * 50
@@ -7915,7 +8237,7 @@ export default class GameScene extends Phaser.Scene {
             // 击中特效
             const hitEffect = this.add.graphics();
             hitEffect.fillStyle(0xffffff, 0.8);
-            hitEffect.fillCircle(enemy.x, enemy.y, 10);
+            hitEffect.fillCircle(enemyX, enemyY, 10);
             hitEffect.setDepth(65);
             
             this.tweens.add({
@@ -7958,9 +8280,12 @@ export default class GameScene extends Phaser.Scene {
     
     // 敌人射击
     private enemyShoot(enemy: any) {
-        if (!this.playerBody || !this.gameStarted) return;
+        if (!this.playerBody || !this.gameStarted || !enemy || !enemy.body) return;
         
-        const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
+        // 使用物理体的实际位置
+        const enemyX = enemy.body.x;
+        const enemyY = enemy.body.y;
+        const angle = Phaser.Math.Angle.Between(enemyX, enemyY, this.playerBody.x, this.playerBody.y);
         
         let damage = 10;
         let bulletColor = 0xff0000;
@@ -7990,10 +8315,10 @@ export default class GameScene extends Phaser.Scene {
         // 优化枪口闪光效果 - 改为小闪光
         const muzzleFlash = this.add.graphics();
         muzzleFlash.fillStyle(bulletColor, 0.9);
-        muzzleFlash.fillCircle(enemy.x, enemy.y, 8); // 减小半径从12到8
+        muzzleFlash.fillCircle(enemyX, enemyY, 8); // 减小半径从12到8
         // 添加外圈光晕
         muzzleFlash.fillStyle(0xffffff, 0.6);
-        muzzleFlash.fillCircle(enemy.x, enemy.y, 4);
+        muzzleFlash.fillCircle(enemyX, enemyY, 4);
         muzzleFlash.setDepth(65);
         
         this.tweens.add({
@@ -8005,10 +8330,10 @@ export default class GameScene extends Phaser.Scene {
         });
         
         const range = 600;
-        const bulletEndX = enemy.x + Math.cos(finalAngle) * range;
-        const bulletEndY = enemy.y + Math.sin(finalAngle) * range;
+        const bulletEndX = enemyX + Math.cos(finalAngle) * range;
+        const bulletEndY = enemyY + Math.sin(finalAngle) * range;
         
-        const hitPoint = this.raycastHitWall(enemy.x, enemy.y, bulletEndX, bulletEndY);
+        const hitPoint = this.raycastHitWall(enemyX, enemyY, bulletEndX, bulletEndY);
         const actualEndX = hitPoint ? hitPoint.x : bulletEndX;
         const actualEndY = hitPoint ? hitPoint.y : bulletEndY;
         
@@ -8021,7 +8346,7 @@ export default class GameScene extends Phaser.Scene {
         const bulletLine = this.add.graphics();
         bulletLine.lineStyle(3, bulletColor, 0.8);
         bulletLine.beginPath();
-        bulletLine.moveTo(enemy.x, enemy.y);
+        bulletLine.moveTo(enemyX, enemyY);
         bulletLine.lineTo(actualEndX, actualEndY);
         bulletLine.strokePath();
         bulletLine.setDepth(60);
@@ -8034,12 +8359,12 @@ export default class GameScene extends Phaser.Scene {
         });
         
         // 伤害判定 - 优化角度容差
-        const playerDist = Phaser.Math.Distance.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
-        const wallDist = hitPoint ? Phaser.Math.Distance.Between(enemy.x, enemy.y, hitPoint.x, hitPoint.y) : Infinity;
+        const playerDist = Phaser.Math.Distance.Between(enemyX, enemyY, this.playerBody.x, this.playerBody.y);
+        const wallDist = hitPoint ? Phaser.Math.Distance.Between(enemyX, enemyY, hitPoint.x, hitPoint.y) : Infinity;
         
         // 玩家在射程内且没有被墙壁阻挡
         if (playerDist < range && playerDist < wallDist) {
-            const actualAngle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.playerBody.x, this.playerBody.y);
+            const actualAngle = Phaser.Math.Angle.Between(enemyX, enemyY, this.playerBody.x, this.playerBody.y);
             const angleDiff = Math.abs(Phaser.Math.Angle.ShortestBetween(finalAngle * 180 / Math.PI, actualAngle * 180 / Math.PI));
             
             // 放宽角度容差，根据敌人类型和距离调整
@@ -8214,7 +8539,7 @@ export default class GameScene extends Phaser.Scene {
             
             // 2秒后跳转到仓库场景
             this.time.delayedCall(2000, () => {
-                evacText.destroy();
+                    evacText.destroy();
                 // 将背包物品转换为仓库格式
                 const warehouseItems = this.convertBackpackToWarehouseItems();
                 
@@ -8755,8 +9080,8 @@ export default class GameScene extends Phaser.Scene {
             font: 'bold 16px Arial',
             color: '#f39c12',
             stroke: '#2c3e50',
-            strokeThickness: 2
-        });
+                        strokeThickness: 2
+                    });
         quantityText.setOrigin(0.5);
         
         // 物品价值
@@ -8775,15 +9100,15 @@ export default class GameScene extends Phaser.Scene {
         // 悬停效果
         itemContainer.on('pointerover', () => {
             itemContainer.setScale(1.15);
-            this.input.setDefaultCursor('pointer');
+                        this.input.setDefaultCursor('pointer');
             // 显示详细信息
             this.showItemDetails(item, centerX + 50, centerY);
         });
         
         itemContainer.on('pointerout', () => {
             itemContainer.setScale(1);
-            this.input.setDefaultCursor('default');
-        });
+                        this.input.setDefaultCursor('default');
+                    });
         
         itemContainer.on('pointerdown', () => {
             this.showItemDetails(item, centerX + 50, centerY);
@@ -9330,11 +9655,11 @@ export default class GameScene extends Phaser.Scene {
                     // 更新倒计时显示（在updateEvacuationPoints中处理递减）
                     if (evacPoint.countdown !== undefined && evacPoint.countdownText) {
                         if (evacPoint.countdown > 0) {
-                            evacPoint.countdownText.setText(`撤离倒计时: ${Math.ceil(evacPoint.countdown)}秒`);
-                            evacPoint.countdownText.setPosition(
-                                evacPoint.x - this.cameras.main.scrollX,
-                                evacPoint.y - this.cameras.main.scrollY - 50
-                            );
+                        evacPoint.countdownText.setText(`撤离倒计时: ${Math.ceil(evacPoint.countdown)}秒`);
+                        evacPoint.countdownText.setPosition(
+                            evacPoint.x - this.cameras.main.scrollX,
+                            evacPoint.y - this.cameras.main.scrollY - 50
+                        );
                             this.evacuationText?.setText(`正在撤离... ${Math.ceil(evacPoint.countdown)}秒`);
                         } else {
                             // 倒计时结束，自动撤离
