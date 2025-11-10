@@ -28,5 +28,7 @@ export default defineConfig({
     alias: {
       phaser: 'phaser/dist/phaser.js'
     }
-  }
+  },
+  // 修复Netlify部署路径问题
+  publicDir: 'public'
 })
