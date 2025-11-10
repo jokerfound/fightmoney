@@ -37,3 +37,6 @@ phaser-game/node_modules/
 phaser-game/package-lock.json
 
 
+
+# Local Netlify folder
+.netlify

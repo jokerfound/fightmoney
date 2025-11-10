@@ -22,7 +22,6 @@ export class MenuScene extends Phaser.Scene {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
         const centerX = width / 2;
-        const centerY = height / 2;
         
         // 深色主题渐变
         gradient.fillGradientStyle(0x0a0e27, 0x1a1f3a, 0x2c3e50, 0x0a0e27, 1);
@@ -59,7 +58,6 @@ export class MenuScene extends Phaser.Scene {
 
     private createTitle() {
         const centerX = this.cameras.main.centerX;
-        const width = this.cameras.main.width;
         const height = this.cameras.main.height;
         
         // 标题区域位置（屏幕上方20%）
@@ -213,6 +211,37 @@ export class MenuScene extends Phaser.Scene {
         
         // 添加点击音效反馈
         this.cameras.main.flash(50, 255, 255, 255);
+        
+        // 如果有scene配置，跳转到对应场景
+        if (config.scene) {
+            // 从localStorage加载玩家金钱，确保传递正确的金钱
+            let playerMoney = 0;
+            try {
+                const savedMoney = localStorage.getItem('player_money');
+                if (savedMoney) {
+                    playerMoney = parseInt(savedMoney, 10);
+                }
+            } catch (error) {
+                console.warn('加载金钱数据失败:', error);
+            }
+            
+            // 如果是启动游戏场景，传递装备信息
+            if (config.scene === 'GameScene') {
+                const currentWeapon = localStorage.getItem('player_current_weapon') || '手枪';
+                const playerArmor = parseInt(localStorage.getItem('player_armor') || '0', 10);
+                const playerMaxHealth = parseInt(localStorage.getItem('player_max_health') || '100', 10);
+                
+                this.scene.start(config.scene, { 
+                    playerMoney,
+                    currentWeapon,
+                    playerArmor,
+                    playerMaxHealth
+                });
+            } else {
+                this.scene.start(config.scene, { playerMoney });
+            }
+            return;
+        }
         
         switch (config.action) {
             case 'showInstructions':

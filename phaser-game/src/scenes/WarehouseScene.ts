@@ -25,14 +25,14 @@ export class WarehouseScene extends Phaser.Scene {
     // 背包相关属性
     private backpackItems: InventoryItem[] = [];
     private backpackSlots: Phaser.GameObjects.Graphics[] = [];
-    private selectedBackpackSlot: number = -1;
+    // private selectedBackpackSlot: number = -1; // 未使用
     private fromEvacuation: boolean = false; // 是否从撤离进入
     
-    // 详细信息面板相关属性
-    private detailsPanel: Phaser.GameObjects.Rectangle | null = null;
-    private detailsTitle: Phaser.GameObjects.Text | null = null;
-    private detailsText: Phaser.GameObjects.Text | null = null;
-    private useButton: Phaser.GameObjects.Rectangle | null = null;
+    // 详细信息面板相关属性（未使用）
+    // private detailsPanel: Phaser.GameObjects.Rectangle | null = null;
+    // private detailsTitle: Phaser.GameObjects.Text | null = null;
+    // private detailsText: Phaser.GameObjects.Text | null = null;
+    // private useButton: Phaser.GameObjects.Rectangle | null = null;
     
     // 操作菜单相关属性
     private actionMenu: Phaser.GameObjects.Container | null = null;
@@ -100,16 +100,15 @@ export class WarehouseScene extends Phaser.Scene {
         
         // 显示鼠标光标
         this.input.setDefaultCursor('default');
-        this.input.cursor = 'default';
         
         this.createBackground();
         this.createInventoryUI();
         this.createItemSlots();
-        this.createBackpackUI(); // 添加背包UI
+        this.createBackpackUI();
         this.createActionButtons();
         this.createStatsDisplay();
         this.createControlsInfo();
-        this.createReturnToMenuButton(); // 添加返回主菜单按钮
+        this.createReturnToMenuButton();
         
         // 如果是从撤离进入，显示欢迎消息
         if (this.fromEvacuation) {
@@ -201,7 +200,7 @@ export class WarehouseScene extends Phaser.Scene {
         // 从本地存储加载容量和升级信息
         this.loadWarehouseData();
         
-        const slotsPerRow = 4; // 改为4列，适应更窄的布局
+        const slotsPerRow = 4; // 每行4个槽位
         const slotSize = 80;
         const slotSpacing = 10;
         
@@ -220,50 +219,20 @@ export class WarehouseScene extends Phaser.Scene {
             const x = startX + col * (slotSize + slotSpacing);
             const y = startY + row * (slotSize + slotSpacing);
             
-            // 创建物品槽
+            // 创建物品槽背景
             const slot = this.add.graphics();
             slot.fillStyle(0x2c3e50, 0.8);
             slot.fillRoundedRect(x, y, slotSize, slotSize, 8);
             slot.lineStyle(2, 0x3498db, 0.6);
             slot.strokeRoundedRect(x, y, slotSize, slotSize, 8);
-            slot.setInteractive(new Phaser.Geom.Rectangle(x, y, slotSize, slotSize), Phaser.Geom.Rectangle.Contains);
+            slot.setDepth(50);
             
             this.itemSlots.push(slot);
             
-            // 槽位交互效果
-            slot.on('pointerover', () => {
-                slot.clear();
-                slot.fillStyle(0x2c3e50, 0.8);
-                slot.fillRoundedRect(x, y, slotSize, slotSize, 8);
-                slot.lineStyle(3, 0xf39c12);
-                slot.strokeRoundedRect(x, y, slotSize, slotSize, 8);
-            });
-            
-            slot.on('pointerout', () => {
-                slot.clear();
-                slot.fillStyle(0x2c3e50, 0.8);
-                slot.fillRoundedRect(x, y, slotSize, slotSize, 8);
-                slot.lineStyle(2, 0x3498db, 0.6);
-                slot.strokeRoundedRect(x, y, slotSize, slotSize, 8);
-            });
-            
-            // 先创建物品（如果有），再设置槽位交互，确保物品容器在槽位之上
+            // 创建物品（如果该槽位有物品）
             if (i < this.inventoryItems.length) {
                 this.createItemInSlot(i, x + slotSize / 2, y + slotSize / 2);
             }
-            
-            // 设置槽位点击事件（空槽位时）
-            slot.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-                // 检查点击是否在物品上（物品容器会在槽位之上）
-                if (i < this.inventoryItems.length) {
-                    // 如果有物品，让物品容器处理点击
-                    // 这里不直接处理，因为物品容器有自己的点击事件
-                    return;
-                } else {
-                    // 空槽位，选择槽位
-                    this.selectSlot(i);
-                }
-            });
         }
     }
 
@@ -272,20 +241,20 @@ export class WarehouseScene extends Phaser.Scene {
         
         const item = this.inventoryItems[slotIndex];
         
-        // 创建物品容器，位置设为(0, 0)，所有元素相对于容器定位
+        // 创建物品容器
         const itemContainer = this.add.container(x, y);
         
-        // 创建物品图标 - 现代化设计
+        // 物品图标背景
         const itemIcon = this.add.graphics();
         itemIcon.fillStyle(this.getItemColor(item.type));
         itemIcon.fillCircle(0, 0, 30);
         itemIcon.lineStyle(2, 0xecf0f1);
         itemIcon.strokeCircle(0, 0, 30);
         
-        // 物品名称
-        const itemText = this.add.text(0, -20, item.name, 
+        // 物品名称（精简显示）
+        const itemText = this.add.text(0, -18, item.name, 
             { 
-                font: 'bold 12px Arial', 
+                font: 'bold 11px Arial', 
                 color: '#ffffff',
                 stroke: '#2c3e50',
                 strokeThickness: 2
@@ -293,9 +262,9 @@ export class WarehouseScene extends Phaser.Scene {
         itemText.setOrigin(0.5);
         
         // 物品数量
-        const quantityText = this.add.text(0, 5, `${item.quantity}`, 
+        const quantityText = this.add.text(0, 3, `×${item.quantity}`, 
             { 
-                font: 'bold 16px Arial', 
+                font: 'bold 15px Arial', 
                 color: '#f39c12',
                 stroke: '#2c3e50',
                 strokeThickness: 2
@@ -303,45 +272,40 @@ export class WarehouseScene extends Phaser.Scene {
         quantityText.setOrigin(0.5);
         
         // 物品价值
-        const valueText = this.add.text(0, 25, `$${item.value}`, 
+        const valueText = this.add.text(0, 23, `$${item.value}`, 
             { 
-                font: 'bold 12px Arial', 
+                font: 'bold 11px Arial', 
                 color: '#2ecc71',
                 stroke: '#2c3e50',
                 strokeThickness: 1
             });
         valueText.setOrigin(0.5);
         
-        // 将所有元素添加到容器中
+        // 添加所有元素到容器
         itemContainer.add([itemIcon, itemText, quantityText, valueText]);
-        itemContainer.setInteractive(new Phaser.Geom.Circle(0, 0, 35), Phaser.Geom.Circle.Contains);
+        itemContainer.setInteractive(new Phaser.Geom.Circle(0, 0, 40), Phaser.Geom.Circle.Contains);
+        itemContainer.setDepth(100);
         
-        // 悬停效果
+        // 鼠标悬停效果（简化，不再显示详细信息）
         itemContainer.on('pointerover', () => {
-            // 显示详细信息面板（在底部）
-            this.showItemDetails(item);
-            // 添加高亮效果
             itemContainer.setScale(1.1);
         });
         
         itemContainer.on('pointerout', () => {
-            // 恢复原大小
             itemContainer.setScale(1);
-            // 如果没有选中菜单，隐藏详细信息
-            if (!this.actionMenu) {
-                this.hideItemDetails();
-            }
         });
         
-        // 点击显示操作菜单（确保在所有情况下都能触发）
+        // 点击事件 - 显示操作菜单
         itemContainer.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            // 阻止事件冒泡，确保点击物品时触发物品的菜单
-            pointer.event?.stopPropagation?.();
-            this.showItemActionMenu(item, false, slotIndex);
+            // 阻止事件冒泡到背景
+            if (pointer.event) {
+                pointer.event.stopPropagation();
+            }
+            // 延迟调用，确保当前点击事件完成后再显示菜单
+            this.time.delayedCall(50, () => {
+                this.showItemActionMenu(item, false, slotIndex);
+            });
         });
-        
-        // 设置更高的深度，确保物品容器在槽位之上
-        itemContainer.setDepth(100);
     }
     
     private loadInventoryFromStorage() {
@@ -429,7 +393,6 @@ export class WarehouseScene extends Phaser.Scene {
     private createActionButtons() {
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
-        const centerX = width / 2;
         const buttonY = height * 0.92;
         const buttonWidth = 150;
         const buttonHeight = 40;
@@ -694,7 +657,8 @@ export class WarehouseScene extends Phaser.Scene {
         graphics.strokeRect(Math.floor(x - slotSize/2), Math.floor(y - slotSize/2), slotSize, slotSize);
     }
 
-    private sellSelectedItem() {
+    // 未使用的方法 - 保留以备后用
+    /* private sellSelectedItem() {
         if (this.selectedSlot >= 0 && this.selectedSlot < this.inventoryItems.length) {
             const item = this.inventoryItems[this.selectedSlot];
             if (!item) return;
@@ -726,7 +690,7 @@ export class WarehouseScene extends Phaser.Scene {
         } else {
             this.showMessage('请先选择一个有效的物品槽位');
         }
-    }
+    } */
 
     private organizeItems() {
         // 按物品类型和价值排序
@@ -752,7 +716,8 @@ export class WarehouseScene extends Phaser.Scene {
         });
     }
 
-    private returnToGame() {
+    // 未使用的方法 - 保留以备后用
+    /* private returnToGame() {
         try {
             // 先保存库存数据
             this.saveInventoryToStorage();
@@ -782,7 +747,7 @@ export class WarehouseScene extends Phaser.Scene {
                 console.error('恢复场景时发生二次错误:', innerError);
             }
         }
-    }
+    } */
     
     private returnToMenu() {
         try {
@@ -841,102 +806,167 @@ export class WarehouseScene extends Phaser.Scene {
         }
     }
     
-    // 显示物品操作菜单
+    // 显示物品操作菜单（合并信息面板）
     private showItemActionMenu(item: InventoryItem, isBackpack: boolean, slotIndex: number) {
+        console.log('显示物品菜单:', item.name, '是否背包:', isBackpack);
+        
         // 隐藏之前的菜单
         this.hideActionMenu();
         
         // 保存当前选中的物品信息
         this.currentSelectedItem = { item, isBackpack, slotIndex };
         
-        // 显示物品详细信息
-        this.showItemDetails(item);
-        
         const width = this.cameras.main.width;
         const height = this.cameras.main.height;
         
-        // 计算菜单位置（在物品右侧或下方）
-        const menuX = isBackpack ? width * 0.25 : width * 0.75;
-        const menuY = height * 0.4;
+        // 统一放在屏幕中间
+        const menuX = width / 2;
+        const menuY = height / 2;
         
         // 创建菜单容器
         this.actionMenu = this.add.container(menuX, menuY);
         
-        // 菜单背景（降低透明度，更清晰）
-        const menuBg = this.add.graphics();
-        menuBg.fillStyle(0x2c3e50, 1.0); // 完全不透明
-        menuBg.fillRoundedRect(-140, -100, 280, 200, 10);
-        menuBg.lineStyle(4, 0x3498db, 1.0); // 更粗的边框，完全不透明
-        menuBg.strokeRoundedRect(-140, -100, 280, 200, 10);
+        // 计算面板尺寸
+        const panelWidth = 400;
+        const panelHeight = 380;
         
-        // 菜单标题
-        const menuTitle = this.add.text(0, -80, '物品操作', {
-            font: 'bold 20px Arial',
+        // 菜单背景
+        const menuBg = this.add.graphics();
+        menuBg.fillStyle(0x2c3e50, 0.95);
+        menuBg.fillRoundedRect(-panelWidth/2, -panelHeight/2, panelWidth, panelHeight, 15);
+        menuBg.lineStyle(4, 0x3498db, 1.0);
+        menuBg.strokeRoundedRect(-panelWidth/2, -panelHeight/2, panelWidth, panelHeight, 15);
+        
+        // 标题背景
+        const titleBg = this.add.graphics();
+        titleBg.fillStyle(0x3498db, 0.4);
+        titleBg.fillRoundedRect(-panelWidth/2, -panelHeight/2, panelWidth, 50, { tl: 15, tr: 15, bl: 0, br: 0 });
+        
+        // 物品名称（标题）
+        const menuTitle = this.add.text(0, -panelHeight/2 + 25, item.name, {
+            font: 'bold 24px Arial',
             color: '#f1c40f',
             stroke: '#2c3e50',
-            strokeThickness: 2
+            strokeThickness: 3
         });
         menuTitle.setOrigin(0.5);
         
-        // 操作按钮
-        const buttonWidth = 200;
-        const buttonHeight = 35;
-        const buttonSpacing = 10;
-        let buttonY = -40;
+        // 详细信息区域
+        const infoStartY = -panelHeight/2 + 70;
+        const infoLineHeight = 28;
         
-        // 如果是从背包，显示"移到仓库"按钮
+        // 物品类型
+        const typeText = this.add.text(-panelWidth/2 + 20, infoStartY, `类型: ${this.getItemTypeName(item.type)}`, {
+            font: 'bold 16px Arial',
+            color: '#ecf0f1',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        
+        // 物品数量
+        const quantityText = this.add.text(-panelWidth/2 + 20, infoStartY + infoLineHeight, `数量: ${item.quantity}`, {
+            font: 'bold 16px Arial',
+            color: '#f39c12',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        
+        // 单价
+        const valueText = this.add.text(-panelWidth/2 + 20, infoStartY + infoLineHeight * 2, `单价: $${item.value}`, {
+            font: 'bold 16px Arial',
+            color: '#2ecc71',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        
+        // 总价
+        const totalText = this.add.text(-panelWidth/2 + 20, infoStartY + infoLineHeight * 3, `总价: $${item.value * item.quantity}`, {
+            font: 'bold 16px Arial',
+            color: '#2ecc71',
+            stroke: '#000000',
+            strokeThickness: 2
+        });
+        
+        // 描述
+        const descText = this.add.text(-panelWidth/2 + 20, infoStartY + infoLineHeight * 4, `描述: ${item.description}`, {
+            font: '14px Arial',
+            color: '#bdc3c7',
+            wordWrap: { width: panelWidth - 40 }
+        });
+        
+        // 分隔线
+        const separator = this.add.graphics();
+        separator.lineStyle(2, 0x3498db, 0.5);
+        separator.lineBetween(-panelWidth/2 + 20, infoStartY + infoLineHeight * 5 + 10, panelWidth/2 - 20, infoStartY + infoLineHeight * 5 + 10);
+        
+        // 操作按钮区域
+        const buttonWidth = 320;
+        const buttonHeight = 40;
+        const buttonSpacing = 12;
+        let buttonY = infoStartY + infoLineHeight * 5 + 30;
+        
+        const buttons: Phaser.GameObjects.Container[] = [];
+        
+        // 移动按钮
         if (isBackpack) {
             const moveButton = this.createActionButton(0, buttonY, buttonWidth, buttonHeight, '➡️ 移到仓库', 0x2ecc71, () => {
                 this.moveItemToWarehouse();
             });
-            this.actionMenu.add(moveButton);
+            buttons.push(moveButton);
             buttonY += buttonHeight + buttonSpacing;
         } else {
-            // 如果是从仓库，显示"移到背包"按钮
             const moveButton = this.createActionButton(0, buttonY, buttonWidth, buttonHeight, '⬅️ 移到背包', 0x9b59b6, () => {
                 this.moveItemToBackpack();
             });
-            this.actionMenu.add(moveButton);
+            buttons.push(moveButton);
             buttonY += buttonHeight + buttonSpacing;
         }
         
         // 出售按钮
-        const sellButton = this.createActionButton(0, buttonY, buttonWidth, buttonHeight, '💰 出售物品', 0xe74c3c, () => {
+        const sellButton = this.createActionButton(0, buttonY, buttonWidth, buttonHeight, `💰 出售物品 (+$${item.value * item.quantity})`, 0xe74c3c, () => {
             this.sellItem();
         });
-        this.actionMenu.add(sellButton);
+        buttons.push(sellButton);
         buttonY += buttonHeight + buttonSpacing;
         
-        // 如果物品可使用，显示使用按钮
+        // 使用按钮（如果可用）
         if (item.type === 'MEDICAL' || item.type === 'FOOD') {
             const useButton = this.createActionButton(0, buttonY, buttonWidth, buttonHeight, '💊 使用物品', 0x27ae60, () => {
                 this.useItem(item);
             });
-            this.actionMenu.add(useButton);
+            buttons.push(useButton);
+            buttonY += buttonHeight + buttonSpacing;
         }
         
         // 关闭按钮
-        const closeButton = this.createActionButton(0, 80, 200, 30, '✖️ 关闭', 0x95a5a6, () => {
+        const closeButton = this.createActionButton(0, buttonY, buttonWidth, buttonHeight, '✖️ 关闭', 0x95a5a6, () => {
             this.hideActionMenu();
         });
-        this.actionMenu.add(closeButton);
+        buttons.push(closeButton);
         
         // 将所有元素添加到容器
-        this.actionMenu.add([menuBg, menuTitle]);
-        this.actionMenu.setDepth(2000);
+        this.actionMenu.add([menuBg, titleBg, menuTitle, typeText, quantityText, valueText, totalText, descText, separator, ...buttons]);
+        this.actionMenu.setDepth(3000);
         
-        // 点击外部区域关闭菜单
-        this.input.once('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            if (!this.actionMenu) return;
-            const bounds = new Phaser.Geom.Rectangle(
-                menuX - 140,
-                menuY - 100,
-                280,
-                200
-            );
-            if (!bounds.contains(pointer.x, pointer.y)) {
-                this.hideActionMenu();
-            }
+        // 点击外部区域关闭菜单（延迟注册，避免立即触发）
+        this.time.delayedCall(200, () => {
+            const globalClickHandler = (pointer: Phaser.Input.Pointer) => {
+                if (!this.actionMenu) return;
+                
+                const bounds = new Phaser.Geom.Rectangle(
+                    menuX - panelWidth/2,
+                    menuY - panelHeight/2,
+                    panelWidth,
+                    panelHeight
+                );
+                
+                if (!bounds.contains(pointer.x, pointer.y)) {
+                    this.hideActionMenu();
+                    this.input.off('pointerdown', globalClickHandler);
+                }
+            };
+            
+            this.input.on('pointerdown', globalClickHandler);
         });
     }
     
@@ -980,6 +1010,7 @@ export class WarehouseScene extends Phaser.Scene {
     // 隐藏操作菜单
     private hideActionMenu() {
         if (this.actionMenu) {
+            console.log('关闭物品菜单');
             this.actionMenu.destroy();
             this.actionMenu = null;
         }
@@ -1102,50 +1133,15 @@ export class WarehouseScene extends Phaser.Scene {
         });
     }
     
-    private showItemDetails(item: InventoryItem) {
-        // 隐藏之前的详细信息面板
-        this.hideItemDetails();
-        
-        const width = this.cameras.main.width;
-        const height = this.cameras.main.height;
-        
-        // 详细信息面板位置（屏幕下方中央）
-        const panelX = width / 2;
-        const panelY = height * 0.82;
-        
-        // 创建详细信息面板背景（降低透明度，更清晰）
-        this.detailsPanel = this.add.rectangle(panelX, panelY, 400, 120, 0x2c3e50, 1.0); // 完全不透明
-        this.detailsPanel.setStrokeStyle(3, 0xecf0f1, 1.0); // 更粗的边框，完全不透明
-        this.detailsPanel.setDepth(1500);
-        
-        // 物品标题
-        this.detailsTitle = this.add.text(panelX, panelY - 40, item.name, {
-            font: 'bold 20px Arial',
-            color: '#f1c40f',
-            stroke: '#2c3e50',
-            strokeThickness: 2
-        });
-        this.detailsTitle.setOrigin(0.5);
-        this.detailsTitle.setDepth(1501);
-        
-        // 物品详细信息
-        const detailsText = [
-            `类型: ${this.getItemTypeName(item.type)}`,
-            `价值: $${item.value} × ${item.quantity} = $${item.value * item.quantity}`,
-            `描述: ${item.description}`
-        ].join('  |  ');
-        
-        this.detailsText = this.add.text(panelX, panelY + 10, detailsText, {
-            font: '14px Arial',
-            color: '#ecf0f1',
-            stroke: '#2c3e50',
-            strokeThickness: 1
-        });
-        this.detailsText.setOrigin(0.5);
-        this.detailsText.setDepth(1501);
-    }
+    // 未使用的方法 - 保留以备后用
+    /* private showItemDetails(_item: InventoryItem) {
+        // 不再单独显示详细信息面板，已合并到操作菜单中
+        // 保留此方法以防其他地方调用
+    } */
     
     private hideItemDetails() {
+        // 未使用的属性，注释掉相关代码
+        /*
         if (this.detailsPanel) {
             this.detailsPanel.destroy();
             this.detailsPanel = null;
@@ -1162,6 +1158,7 @@ export class WarehouseScene extends Phaser.Scene {
             this.useButton.destroy();
             this.useButton = null;
         }
+        */
     }
     
     private useItem(item: InventoryItem) {
@@ -1227,9 +1224,9 @@ export class WarehouseScene extends Phaser.Scene {
         
         // 背包区域背景（左侧）
         const backpackBg = this.add.graphics();
-        const backpackWidth = width * 0.45; // 占屏幕45%宽度
+        const backpackWidth = width * 0.45;
         const backpackHeight = height * 0.65;
-        const backpackX = width * 0.03; // 左侧位置
+        const backpackX = width * 0.03;
         const backpackY = height * 0.15;
         
         backpackBg.fillStyle(0x34495e, 0.9);
@@ -1252,7 +1249,7 @@ export class WarehouseScene extends Phaser.Scene {
         backpackTitle.setOrigin(0.5);
         
         // 创建背包物品槽
-        const slotsPerRow = 4; // 改为4列，与仓库保持一致
+        const slotsPerRow = 4; // 与仓库保持一致
         const slotSize = 80;
         const slotSpacing = 10;
         
@@ -1260,7 +1257,7 @@ export class WarehouseScene extends Phaser.Scene {
         const startX = backpackX + (backpackWidth - totalSlotWidth) / 2;
         const startY = backpackY + 70;
         
-        // 背包最多显示12个物品
+        // 背包最多12个物品
         const maxBackpackSlots = 12;
         for (let i = 0; i < maxBackpackSlots; i++) {
             const row = Math.floor(i / slotsPerRow);
@@ -1269,50 +1266,20 @@ export class WarehouseScene extends Phaser.Scene {
             const x = startX + col * (slotSize + slotSpacing);
             const y = startY + row * (slotSize + slotSpacing);
             
-            // 创建背包物品槽
+            // 创建背包槽位背景
             const slot = this.add.graphics();
             slot.fillStyle(0x2c3e50, 0.8);
             slot.fillRoundedRect(x, y, slotSize, slotSize, 6);
             slot.lineStyle(2, 0x9b59b6, 0.6);
             slot.strokeRoundedRect(x, y, slotSize, slotSize, 6);
-            slot.setInteractive(new Phaser.Geom.Rectangle(x, y, slotSize, slotSize), Phaser.Geom.Rectangle.Contains);
+            slot.setDepth(50);
             
             this.backpackSlots.push(slot);
             
-            // 槽位交互效果
-            slot.on('pointerover', () => {
-                slot.clear();
-                slot.fillStyle(0x2c3e50, 0.8);
-                slot.fillRoundedRect(x, y, slotSize, slotSize, 6);
-                slot.lineStyle(3, 0xf39c12);
-                slot.strokeRoundedRect(x, y, slotSize, slotSize, 6);
-            });
-            
-            slot.on('pointerout', () => {
-                slot.clear();
-                slot.fillStyle(0x2c3e50, 0.8);
-                slot.fillRoundedRect(x, y, slotSize, slotSize, 6);
-                slot.lineStyle(2, this.selectedBackpackSlot === i ? 0xf1c40f : 0x9b59b6, 0.6);
-                slot.strokeRoundedRect(x, y, slotSize, slotSize, 6);
-            });
-            
-            // 先创建物品（如果有），再设置槽位交互，确保物品容器在槽位之上
+            // 创建物品（如果该槽位有物品）
             if (i < this.backpackItems.length) {
                 this.createBackpackItemInSlot(i, x + slotSize / 2, y + slotSize / 2);
             }
-            
-            // 设置槽位点击事件（空槽位时）
-            slot.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-                // 检查点击是否在物品上（物品容器会在槽位之上）
-                if (i < this.backpackItems.length) {
-                    // 如果有物品，让物品容器处理点击
-                    // 这里不直接处理，因为物品容器有自己的点击事件
-                    return;
-                } else {
-                    // 空槽位，选择槽位
-                    this.selectBackpackSlot(i);
-                }
-            });
         }
     }
     
@@ -1325,15 +1292,15 @@ export class WarehouseScene extends Phaser.Scene {
         // 创建物品容器
         const itemContainer = this.add.container(x, y);
         
-        // 创建物品图标
+        // 物品图标背景
         const itemIcon = this.add.graphics();
         itemIcon.fillStyle(this.getItemColor(item.type));
-        itemIcon.fillCircle(0, 0, 25);
+        itemIcon.fillCircle(0, 0, 28);
         itemIcon.lineStyle(2, 0xecf0f1);
-        itemIcon.strokeCircle(0, 0, 25);
+        itemIcon.strokeCircle(0, 0, 28);
         
         // 物品数量
-        const quantityText = this.add.text(0, 0, `${item.quantity}`, 
+        const quantityText = this.add.text(0, 0, `×${item.quantity}`, 
             { 
                 font: 'bold 14px Arial', 
                 color: '#f39c12',
@@ -1342,35 +1309,35 @@ export class WarehouseScene extends Phaser.Scene {
             });
         quantityText.setOrigin(0.5);
         
-        // 将所有元素添加到容器中
+        // 添加元素到容器
         itemContainer.add([itemIcon, quantityText]);
         itemContainer.setInteractive(new Phaser.Geom.Circle(0, 0, 35), Phaser.Geom.Circle.Contains);
+        itemContainer.setDepth(100);
         
-        // 悬停效果
+        // 交互效果（简化，不再显示详细信息）
         itemContainer.on('pointerover', () => {
-            this.showItemDetails(item);
             itemContainer.setScale(1.1);
         });
         
         itemContainer.on('pointerout', () => {
             itemContainer.setScale(1);
-            if (!this.actionMenu) {
-                this.hideItemDetails();
-            }
         });
         
         itemContainer.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            // 阻止事件冒泡，确保点击物品时触发物品的菜单
-            pointer.event?.stopPropagation?.();
-            this.showItemActionMenu(item, true, slotIndex);
+            // 阻止事件冒泡
+            if (pointer.event) {
+                pointer.event.stopPropagation();
+            }
+            // 延迟调用，确保当前点击事件完成后再显示菜单
+            this.time.delayedCall(50, () => {
+                this.showItemActionMenu(item, true, slotIndex);
+            });
         });
-        
-        // 设置更高的深度，确保物品容器在槽位之上
-        itemContainer.setDepth(100);
     }
     
     // 选择背包槽位
-    private selectBackpackSlot(slotIndex: number) {
+    // 未使用的方法 - 保留以备后用
+    /* private selectBackpackSlot(slotIndex: number) {
         // 取消之前的选择
         if (this.selectedBackpackSlot >= 0 && this.selectedBackpackSlot < this.backpackSlots.length) {
             const prevSlot = this.backpackSlots[this.selectedBackpackSlot];
@@ -1423,7 +1390,7 @@ export class WarehouseScene extends Phaser.Scene {
         }
         
         console.log(`选中背包槽位 ${slotIndex + 1}`);
-    }
+    } */
     
     // 刷新场景
     private refreshScene() {

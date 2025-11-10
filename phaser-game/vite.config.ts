@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  base: '/',
   server: {
     port: 3000,
     hmr: true,
@@ -8,7 +9,16 @@ export default defineConfig({
   },
   build: {
     target: 'es2020',
-    minify: false
+    minify: 'terser',
+    outDir: 'dist',
+    assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          phaser: ['phaser']
+        }
+      }
+    }
   },
   optimizeDeps: {
     include: ['phaser'],
